@@ -1,10 +1,12 @@
+import { getSafeRedirectPath } from "@/lib/safe-redirect"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const requestUrl = new URL(request.url)
+  const { searchParams } = requestUrl
   const code = searchParams.get("code")
-  const next = searchParams.get("next") ?? "/dashboard"
+  const next = getSafeRedirectPath(searchParams.get("next"))
 
   if (code) {
     const supabase = createServerSupabaseClient()
@@ -40,11 +42,13 @@ export async function GET(request: Request) {
           }
         }
 
-        return NextResponse.redirect(`${origin}${next}`)
+        return NextResponse.redirect(new URL(next, requestUrl))
       }
     }
   }
 
   // Exchange failed or code missing — send back to login with an error hint
-  return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`)
+  return NextResponse.redirect(
+    new URL("/login?error=auth_callback_failed", requestUrl),
+  )
 }

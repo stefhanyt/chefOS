@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { getSafeRedirectPath } from "@/lib/safe-redirect"
 
 // Routes accessible without a session
 const PUBLIC_PATHS = ["/login", "/auth/"]
@@ -43,14 +44,17 @@ export async function middleware(request: NextRequest) {
 
   // Authenticated user hitting the login page → send them in
   if (session && pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+    const next = getSafeRedirectPath(request.nextUrl.searchParams.get("next"))
+    return NextResponse.redirect(new URL(next, request.url))
   }
 
   // Unauthenticated user hitting a protected page → send to login
   if (!session && !isPublic) {
     const loginUrl = new URL("/login", request.url)
     // Preserve intended destination (skip root — it just redirects to /dashboard anyway)
-    if (pathname !== "/") loginUrl.searchParams.set("next", pathname)
+    if (pathname !== "/") {
+      loginUrl.searchParams.set("next", getSafeRedirectPath(pathname))
+    }
     return NextResponse.redirect(loginUrl)
   }
 

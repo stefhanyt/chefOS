@@ -4,6 +4,7 @@ import { Suspense, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseConfigured } from "@/lib/env"
+import { getSafeRedirectPath } from "@/lib/safe-redirect"
 import { ChefHat, Mail, Lock, ArrowRight } from "lucide-react"
 
 // useSearchParams requires a Suspense boundary during static generation
@@ -18,7 +19,7 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter()
   const params = useSearchParams()
-  const next = params.get("next") ?? "/dashboard"
+  const next = getSafeRedirectPath(params.get("next"))
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
