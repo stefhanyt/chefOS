@@ -5,15 +5,6 @@ import { NextResponse, type NextRequest } from "next/server"
 const PUBLIC_PATHS = ["/login", "/auth/"]
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
-
-  // Health probe — skip auth and session refresh
-  if (pathname === "/api/health") {
-    return NextResponse.next({
-      request: { headers: request.headers },
-    })
-  }
-
   let response = NextResponse.next({
     request: { headers: request.headers },
   })
@@ -47,6 +38,7 @@ export async function middleware(request: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
+  const { pathname } = request.nextUrl
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p))
 
   // Authenticated user hitting the login page → send them in
@@ -67,7 +59,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files so they're always accessible
-    "/((?!_next/static|_next/image|favicon\\.ico|icons|manifest\\.json|sw\\.js|workbox-.*|apple-touch-icon).*)",
+    "/((?!api/health|_next/static|_next/image|favicon.ico|manifest.json|sw.js|icons).*)",
   ],
 }
