@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="80" fill="#0F2A55"/>
+  <!-- Chef hat dome -->
+  <ellipse cx="256" cy="208" rx="96" ry="74" fill="white"/>
+  <!-- Hat cylinder body -->
+  <rect x="162" y="238" width="188" height="118" fill="white"/>
+  <!-- Hat brim -->
+  <rect x="138" y="348" width="236" height="40" rx="8" fill="white"/>
+  <!-- Blue accent band -->
+  <rect x="138" y="348" width="236" height="14" rx="4" fill="#2563EB"/>
+  <!-- Subtle dome highlight -->
+  <path d="M 194 183 Q 256 163 318 183" stroke="#DBEAFE" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
