@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
+import AddMenuDishModal from "@/components/AddMenuDishModal"
 import ErrorBanner from "@/components/ErrorBanner"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
@@ -36,9 +37,10 @@ export default function MenuPage() {
   const [homes, setHomes] = useState<Home[]>([])
   const [homeId, setHomeId] = useState("")
   const [weekOffset, setWeekOffset] = useState(0)
-  const [view, setView] = useState<"week" | "day" | "picker" | "confirmed">("week")
+  const [view, setView] = useState<"week" | "day" | "confirmed">("week")
   const [selectedDay, setSelectedDay] = useState(0)
   const [selectedCat, setSelectedCat] = useState("")
+  const [addModalOpen, setAddModalOpen] = useState(false)
   const [menu, setMenu] = useState<WeekMenu>({})
   const [menuId, setMenuId] = useState<string | null>(null)
   const [isConfirmed, setIsConfirmed] = useState(false)
@@ -121,7 +123,7 @@ export default function MenuPage() {
       }
     }
     init()
-  }, [showError])
+  }, [])
 
   useEffect(() => {
     if (homeId) loadMenu()
@@ -159,14 +161,64 @@ export default function MenuPage() {
     return id
   }
 
+  function isDuplicateMenuEntry(
+    day: number,
+    cat: string,
+    dishName: string,
+    dishId?: string | null,
+  ) {
+    return (dayMenu(day)[cat] ?? []).some(
+      (x) =>
+        (dishId && x.dish_id === dishId) ||
+        x.dish.trim().toLowerCase() === dishName.trim().toLowerCase(),
+    )
+  }
+
+  async function createDishInLibrary(
+    name: string,
+    category: string,
+  ): Promise<DishLibraryItem | null> {
+    const supabase = createClient()
+    if (!supabase) return null
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in.")
+      return null
+    }
+    const { data, error } = await supabase
+      .from("dish_library")
+      .insert({
+        name: name.trim(),
+        category: category.trim() || selectedCat,
+        ingredients: "",
+        prep_time: "",
+        storage_instructions: "",
+        reheating_instructions: "",
+        tags: [],
+        created_by: userId,
+      })
+      .select("*")
+      .single()
+    if (error) {
+      logSupabaseError("dish library insert from menu", error)
+      showError(getSupabaseErrorMessage(error))
+      return null
+    }
+    const dish = data as DishLibraryItem
+    setDishLibrary((prev) =>
+      [...prev, dish].sort((a, b) => a.name.localeCompare(b.name)),
+    )
+    showSuccess(`"${dish.name}" added to dish library`)
+    return dish
+  }
+
   async function addDish(
     day: number,
     cat: string,
     dishName: string,
     dishId?: string | null,
   ) {
-    const existing = (dayMenu(day)[cat] ?? []).find((x) => x.dish === dishName)
-    if (existing) return
+    if (isDuplicateMenuEntry(day, cat, dishName, dishId)) return
 
     const supabase = createClient()
     if (!supabase) return
@@ -309,68 +361,10 @@ export default function MenuPage() {
     )
   }
 
-  if (view === "picker") {
-    const available = dishLibrary.filter((d) => d.category === selectedCat)
-    const selDishes = (dayMenu(selectedDay)[selectedCat] ?? []).map((d) => d.dish)
-    return (
-      <AppShell>
-        <button
-          onClick={() => setView("day")}
-          className="mb-4 flex items-center gap-1.5 text-sm font-bold text-navy-light"
-        >
-          <ChevronLeft size={16} /> Back
-        </button>
-        <PageHeader
-          title={selectedCat}
-          subtitle={`${MENU_DAYS[selectedDay]} · ${home.name}`}
-        />
-        <div className="space-y-2">
-          {available.length === 0 ? (
-            <p className="text-sm text-slate-400 py-4 text-center">
-              No dishes in this category. Add recipes in Dish Library.
-            </p>
-          ) : (
-            available.map((dish) => {
-              const on = selDishes.includes(dish.name)
-              return (
-                <button
-                  key={dish.id}
-                  onClick={() =>
-                    on
-                      ? removeDish(
-                          (dayMenu(selectedDay)[selectedCat] ?? []).find(
-                            (x) => x.dish === dish.name,
-                          )!.id,
-                          selectedDay,
-                          selectedCat,
-                        )
-                      : addDish(selectedDay, selectedCat, dish.name, dish.id)
-                  }
-                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition-all ${
-                    on
-                      ? "border-2 border-blue-600 bg-navy/5"
-                      : "border-stone-200/60 bg-white"
-                  }`}
-                >
-                  <span
-                    className={`text-sm font-semibold ${on ? "text-navy-light" : "text-slate-700"}`}
-                  >
-                    {dish.name}
-                  </span>
-                  {on && <span className="text-xs font-bold text-navy-light">Selected</span>}
-                </button>
-              )
-            })
-          )}
-        </div>
-        <button
-          onClick={() => setView("day")}
-          className="mt-6 w-full rounded-2xl bg-navy py-4 text-sm font-semibold text-white shadow-soft"
-        >
-          Done — {selDishes.length} selected
-        </button>
-      </AppShell>
-    )
+  function openAddModal(day: number, cat: string) {
+    setSelectedDay(day)
+    setSelectedCat(cat)
+    setAddModalOpen(true)
   }
 
   if (view === "day") {
@@ -396,10 +390,7 @@ export default function MenuPage() {
                   {cat}
                 </h3>
                 <button
-                  onClick={() => {
-                    setSelectedCat(cat)
-                    setView("picker")
-                  }}
+                  onClick={() => openAddModal(selectedDay, cat)}
                   className="text-xs font-bold text-navy-light"
                 >
                   + Add
@@ -407,13 +398,10 @@ export default function MenuPage() {
               </div>
               {dishes.length === 0 ? (
                 <button
-                  onClick={() => {
-                    setSelectedCat(cat)
-                    setView("picker")
-                  }}
+                  onClick={() => openAddModal(selectedDay, cat)}
                   className="w-full rounded-2xl border border-dashed border-stone-200/60 bg-slate-50 px-4 py-3.5 text-left text-sm text-slate-400"
                 >
-                  No {cat.toLowerCase()} — tap to add
+                  No {cat.toLowerCase()} — tap to add from library
                 </button>
               ) : (
                 dishes.map((entry) => (
@@ -423,7 +411,15 @@ export default function MenuPage() {
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 pr-3">
-                        <p className="mb-3 text-sm font-bold text-slate-900">{entry.dish}</p>
+                        <p className="mb-1 font-display text-lg font-semibold text-charcoal">
+                          {entry.dish}
+                        </p>
+                        {entry.dish_id && (
+                          <p className="mb-3 text-[10px] font-medium uppercase tracking-wider text-stone-400">
+                            From dish library
+                          </p>
+                        )}
+                        {!entry.dish_id && <div className="mb-3" />}
                         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
                           Portions
                         </p>
@@ -464,6 +460,20 @@ export default function MenuPage() {
             </div>
           )
         })}
+
+        <AddMenuDishModal
+          open={addModalOpen}
+          onClose={() => setAddModalOpen(false)}
+          menuCategory={selectedCat}
+          dayLabel={`${MENU_DAYS[selectedDay]} · ${home.name}`}
+          dishes={dishLibrary}
+          alreadyAdded={dayMenu(selectedDay)[selectedCat] ?? []}
+          onSelectDish={(dish) =>
+            addDish(selectedDay, selectedCat, dish.name, dish.id)
+          }
+          onAddManual={(name) => addDish(selectedDay, selectedCat, name, null)}
+          onCreateDish={createDishInLibrary}
+        />
       </AppShell>
     )
   }
@@ -507,7 +517,9 @@ export default function MenuPage() {
                         className="mb-1.5 flex items-start justify-between"
                       >
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">{entry.dish}</p>
+                          <p className="font-display text-base font-semibold text-charcoal">
+                            {entry.dish}
+                          </p>
                           {entry.notes && (
                             <p className="mt-0.5 text-xs text-slate-400">{entry.notes}</p>
                           )}
@@ -637,9 +649,16 @@ export default function MenuPage() {
                   <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     {cat}
                   </span>
-                  <span className="text-xs text-slate-600">
-                    {dishes.map((d) => d.dish).join(", ")}
-                  </span>
+                  <ul className="mt-1 space-y-0.5">
+                    {dishes.map((d) => (
+                      <li
+                        key={d.id}
+                        className="font-display text-sm font-semibold text-charcoal"
+                      >
+                        {d.dish}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )
             })}

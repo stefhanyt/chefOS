@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { isSupabaseConfigured } from "@/lib/env"
 import { getSafeRedirectPath } from "@/lib/safe-redirect"
+import { getWindowOrigin } from "@/lib/safe-client"
 import { ChefHat, Mail, Lock, ArrowRight } from "lucide-react"
 
 export default function LoginPage() {
@@ -136,7 +137,7 @@ function LoginContent() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo: `${getWindowOrigin()}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     })
     if (error) {

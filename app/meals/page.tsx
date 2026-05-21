@@ -18,7 +18,9 @@ import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
 import SheetModal from "@/components/SheetModal"
 import FormField from "@/components/FormField"
+import SuggestingInput from "@/components/SuggestingInput"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
+import { useMealSuggestionHistory } from "@/hooks/useMealSuggestionHistory"
 import { CONFIG_ERROR } from "@/lib/constants"
 
 const STATUS_FILTERS: (MealStatus | "All")[] = [
@@ -75,7 +77,7 @@ export default function MealsPage() {
       }
     }
     load()
-  }, [retryCount, showError])
+  }, [retryCount])
 
   const filtered = meals.filter((m) => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
@@ -285,8 +287,8 @@ function LogMealForm({
   const [reheating, setReheating] = useState(meal?.reheating_instructions ?? "")
   const [homeId, setHomeId] = useState(meal?.home_id ?? "")
   const [saving, setSaving] = useState(false)
+  const [autofillHint, setAutofillHint] = useState<string | null>(null)
 
-  // Sync residence when homes load or modal opens (initial useState(homes[0]) was often "")
   useEffect(() => {
     if (homes.length === 0) {
       setHomeId("")
@@ -297,6 +299,27 @@ function LogMealForm({
       return homes[0].id
     })
   }, [homes])
+
+  const resolvedHomeId =
+    homes.length === 1 ? homes[0].id : homeId
+  const history = useMealSuggestionHistory(resolvedHomeId)
+
+  const nameSuggestions = useMemo(
+    () =>
+      history.filter(name).map((s) => ({
+        id: s.name,
+        label: s.name,
+        sublabel: [
+          s.storage_location,
+          s.reheating_instructions,
+          s.count > 1 ? `Logged ${s.count}×` : null,
+          s.shelf_life_days != null ? `~${s.shelf_life_days} day shelf life` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      })),
+    [history, name],
+  )
 
   const validation = useMemo(() => {
     const hasName = name.trim().length > 0
@@ -334,6 +357,40 @@ function LogMealForm({
       ].filter(Boolean) as string[],
     }
   }, [name, expiryDate, prepDate, homeId, portions, homes, saving])
+
+  function applyMealSuggestion(suggestionName: string) {
+    const picked = history.suggestions.find(
+      (s) => s.name.toLowerCase() === suggestionName.toLowerCase(),
+    )
+
+    if (!picked) {
+      const profile = history.profileForName(suggestionName)
+      if (!profile) {
+        setName(suggestionName)
+        return
+      }
+      setName(suggestionName)
+      if (profile.storage_location) setStorageLocation(profile.storage_location)
+      if (profile.reheating_instructions) setReheating(profile.reheating_instructions)
+      if (profile.portions) setPortions(String(profile.portions))
+      if (profile.shelf_life_days != null) {
+        const d = new Date()
+        d.setDate(d.getDate() + profile.shelf_life_days)
+        setExpiryDate(d.toISOString().split("T")[0])
+      }
+      setAutofillHint("Filled from meal & dish history")
+      return
+    }
+
+    const resolved = history.pickSuggestion(picked)
+    setName(resolved.name)
+    if (resolved.storage_location) setStorageLocation(resolved.storage_location)
+    if (resolved.reheating_instructions) setReheating(resolved.reheating_instructions)
+    if (resolved.portions) setPortions(resolved.portions)
+    if (resolved.prepared_date) setPrepDate(resolved.prepared_date)
+    if (resolved.expiry_date) setExpiryDate(resolved.expiry_date)
+    setAutofillHint("Filled from meal & dish history")
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -402,12 +459,18 @@ function LogMealForm({
           </div>
         )}
 
-        <FormField
+        <SuggestingInput
           label="Meal Name"
           value={name}
-          onChange={setName}
-          placeholder="e.g. Chicken Soup"
+          onChange={(v) => {
+            setName(v)
+            setAutofillHint(null)
+          }}
+          onSelect={(opt) => applyMealSuggestion(opt.label)}
+          suggestions={nameSuggestions}
+          placeholder="e.g. Chicken Soup — type to search history"
           required
+          hint={autofillHint}
         />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <FormField

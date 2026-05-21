@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
+import { isBrowser } from "@/lib/safe-client"
 
 export const DEBUG_MODAL_LAYERS = false
 
@@ -25,12 +26,16 @@ export default function SheetModal({
   children,
   footer,
 }: SheetModalProps) {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => setMounted(true), [])
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (isBrowser() && document.body) {
+      setPortalTarget(document.body)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open || !isBrowser()) return
     const prev = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
@@ -38,7 +43,7 @@ export default function SheetModal({
     }
   }, [open])
 
-  if (!mounted || !open) return null
+  if (!portalTarget || !open) return null
 
   return createPortal(
     <div
@@ -55,7 +60,8 @@ export default function SheetModal({
       />
 
       <div
-        className={`relative z-10 flex max-h-[min(88dvh,100dvh)] w-full max-w-md flex-col rounded-t-[28px] border border-stone-200/50 bg-surface shadow-card-lg sm:max-h-[90vh] sm:rounded-[28px] ${debugOutline}`}
+        className={`relative z-10 flex max-h-[88vh] w-full max-w-md flex-col rounded-t-[28px] border border-stone-200/50 bg-surface shadow-card-lg sm:max-h-[90vh] sm:rounded-[28px] ${debugOutline}`}
+        style={{ maxHeight: "min(88vh, 100%)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div
@@ -92,6 +98,6 @@ export default function SheetModal({
         ) : null}
       </div>
     </div>,
-    document.body,
+    portalTarget,
   )
 }

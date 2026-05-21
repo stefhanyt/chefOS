@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import AppShell from "@/components/AppShell"
@@ -35,9 +35,9 @@ import { ui } from "@/lib/ui"
 export default function HomeDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>
+  params: { id: string }
 }) {
-  const { id } = use(params)
+  const id = params?.id ?? ""
   const { showSuccess, showError } = useToast()
 
   const [home, setHome] = useState<Home | null>(null)
@@ -110,7 +110,7 @@ export default function HomeDetailPage({
       }
     }
     load()
-  }, [id, retryCount, showError])
+  }, [id, retryCount])
 
   async function handleSaveHome(form: {
     name: string

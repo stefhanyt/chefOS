@@ -56,13 +56,15 @@ export default function DishLibraryPage() {
       }
     }
     load()
-  }, [retryCount, showError])
+  }, [retryCount])
 
   const filtered = dishes.filter(
     (d) =>
       d.name.toLowerCase().includes(search.toLowerCase()) ||
       d.category.toLowerCase().includes(search.toLowerCase()) ||
-      d.tags.some((t) => t.toLowerCase().includes(search.toLowerCase())),
+      (Array.isArray(d.tags) ? d.tags : []).some((t) =>
+        String(t).toLowerCase().includes(search.toLowerCase()),
+      ),
   )
 
   async function handleAddDish(form: DishFormInput) {
@@ -187,7 +189,7 @@ export default function DishLibraryPage() {
             </p>
 
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {dish.tags.map((tag) => (
+              {(Array.isArray(dish.tags) ? dish.tags : []).map((tag) => (
                 <span
                   key={tag}
                   className="rounded-full bg-navy/5 px-2.5 py-1 text-xs font-medium text-navy-light"
@@ -267,7 +269,9 @@ function DishFormModal({
   const [prepTime, setPrepTime] = useState(initial?.prep_time ?? "")
   const [storage, setStorage] = useState(initial?.storage_instructions ?? "")
   const [reheating, setReheating] = useState(initial?.reheating_instructions ?? "")
-  const [tagsRaw, setTagsRaw] = useState(initial?.tags.join(", ") ?? "")
+  const [tagsRaw, setTagsRaw] = useState(
+    (Array.isArray(initial?.tags) ? initial.tags : []).join(", "),
+  )
   const [saving, setSaving] = useState(false)
 
   const canSubmit = name.trim().length > 0 && !saving

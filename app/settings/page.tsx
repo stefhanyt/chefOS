@@ -90,7 +90,7 @@ export default function SettingsPage() {
       }
     }
     loadProfile()
-  }, [showError])
+  }, [])
 
   async function handleSaveProfile() {
     const supabase = createClient()

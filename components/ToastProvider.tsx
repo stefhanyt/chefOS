@@ -4,10 +4,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react"
 import { AlertCircle, Check } from "lucide-react"
+import { generateClientId, isBrowser } from "@/lib/safe-client"
 
 type ToastType = "success" | "error"
 
@@ -24,6 +26,13 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null)
 
+const noopToast = () => {}
+
+const fallbackValue: ToastContextValue = {
+  showSuccess: noopToast,
+  showError: noopToast,
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
@@ -33,23 +42,35 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const addToast = useCallback(
     (message: string, type: ToastType) => {
-      const id = crypto.randomUUID()
+      const id = generateClientId()
       setToasts((prev) => [...prev, { id, message, type }])
-      window.setTimeout(() => dismiss(id), 4000)
+      if (isBrowser()) {
+        window.setTimeout(() => dismiss(id), 4000)
+      }
     },
     [dismiss],
   )
 
-  const value: ToastContextValue = {
-    showSuccess: (message) => addToast(message, "success"),
-    showError: (message) => addToast(message, "error"),
-  }
+  const showSuccess = useCallback(
+    (message: string) => addToast(message, "success"),
+    [addToast],
+  )
+
+  const showError = useCallback(
+    (message: string) => addToast(message, "error"),
+    [addToast],
+  )
+
+  const value = useMemo(
+    () => ({ showSuccess, showError }),
+    [showSuccess, showError],
+  )
 
   return (
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed left-4 right-4 top-4 z-[110] mx-auto flex max-w-md flex-col gap-2"
+        className="pointer-events-none fixed left-4 right-4 top-4 z-[110] mx-auto flex max-w-md flex-col gap-2 pt-[env(safe-area-inset-top)]"
         aria-live="polite"
       >
         {toasts.map((toast) => (
@@ -76,8 +97,5 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext)
-  if (!ctx) {
-    throw new Error("useToast must be used within ToastProvider")
-  }
-  return ctx
+  return ctx ?? fallbackValue
 }

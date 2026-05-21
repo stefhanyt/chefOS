@@ -49,7 +49,7 @@ export default function ScanHistoryPage() {
       }
     }
     load()
-  }, [retryCount, showError])
+  }, [retryCount])
 
   return (
     <AppShell>

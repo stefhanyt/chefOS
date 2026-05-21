@@ -69,7 +69,7 @@ export default function ShoppingListPage() {
       }
     }
     load()
-  }, [retryCount, showError])
+  }, [retryCount])
 
   useEffect(() => {
     const supabase = createClient()

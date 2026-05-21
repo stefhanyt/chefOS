@@ -87,7 +87,7 @@ export default function DashboardPage() {
       }
     }
     load()
-  }, [retryCount, showError])
+  }, [retryCount])
 
   return (
     <AppShell>
