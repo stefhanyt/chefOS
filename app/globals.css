@@ -2,22 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-html {
-  -webkit-tap-highlight-color: transparent;
-  overflow-x: hidden;
-}
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
 
-body {
-  font-family: Inter, system-ui, sans-serif;
-  overflow-x: hidden;
-}
+  body {
+    font-family: var(--font-inter), Inter, system-ui, sans-serif;
+    overflow-x: hidden;
+    @apply bg-[#F5F8FC] text-slate-900 antialiased;
+  }
 
-/* Eliminate 300ms tap delay on all interactive elements */
-a, button, input, select, textarea, [role="button"] {
-  touch-action: manipulation;
-}
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
 
-/* Prevent iOS input zoom — all inputs must render at ≥16px */
-input, select, textarea {
-  font-size: max(16px, 1rem);
+  /* Prevent iOS input zoom — inputs must render at ≥16px */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
 }

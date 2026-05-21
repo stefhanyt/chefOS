@@ -1,11 +1,17 @@
 import type { Metadata, Viewport } from "next"
+import { Inter } from "next/font/google"
 import "./globals.css"
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration"
-// Importing supabaseEnv here triggers the startup env-check warning in the terminal
+import { ToastProvider } from "@/components/ToastProvider"
 import { supabaseEnv } from "@/lib/env"
 
-// Suppress "unused import" — the import exists for its server-side side-effect
 void supabaseEnv
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+})
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -42,6 +48,8 @@ export const metadata: Metadata = {
   },
   other: {
     "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "black-translucent",
+    "msapplication-TileColor": "#0F2A55",
   },
 }
 
@@ -51,16 +59,12 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <head>
-        {/* Splash screen color for iOS during launch */}
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="msapplication-TileColor" content="#0F2A55" />
-        <link rel="mask-icon" href="/icons/icon.svg" color="#0F2A55" />
-      </head>
-      <body>
-        <ServiceWorkerRegistration />
-        {children}
+    <html lang="en" className={inter.variable}>
+      <body className={`${inter.className} min-h-screen bg-[#F5F8FC] text-slate-900 antialiased`}>
+        <ToastProvider>
+          <ServiceWorkerRegistration />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   )

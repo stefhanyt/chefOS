@@ -4,7 +4,7 @@ export type PantryStatus = "Out of Stock" | "Critical" | "Low" | "OK"
 export type MealStatus = "Expired" | "Use Soon" | "Fresh"
 export type ShoppingStatus = "Open" | "Purchased" | "Archived"
 export type MemberRole = "admin" | "staff" | "viewer"
-export type ScanMode = "single" | "batch"
+export type ScanMode = "single" | "batch" | "photo"
 export type Priority = "Normal" | "Important" | "Urgent"
 
 export interface Profile {
@@ -127,6 +127,28 @@ export interface PreparedMeal {
   archived_at?: string | null
   // joined
   home?: Home
+}
+
+export interface WeeklyMenu {
+  id: string
+  home_id: string
+  created_by: string
+  week_start: string
+  status: "draft" | "confirmed"
+  created_at: string
+  updated_at: string
+}
+
+export interface MenuItemRow {
+  id: string
+  menu_id: string
+  dish_id?: string | null
+  day_of_week: number
+  category: string
+  dish_name: string
+  portions: number
+  notes?: string | null
+  created_at: string
 }
 
 export interface BarcodeScan {

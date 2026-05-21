@@ -28,7 +28,6 @@ function LoginContent() {
   const [magicSent, setMagicSent] = useState(false)
   const [mode, setMode] = useState<"password" | "magic">("password")
 
-  // ── Mock / demo mode ──────────────────────────────────────────
   if (!isSupabaseConfigured) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[#F5F8FC] p-6">
@@ -36,18 +35,12 @@ function LoginContent() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-[20px] bg-blue-50">
             <ChefHat size={28} className="text-blue-600" />
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900">ChefOS — Demo Mode</h2>
+          <h2 className="text-xl font-extrabold text-slate-900">Configuration Required</h2>
           <p className="mt-3 text-sm leading-relaxed text-slate-500">
-            Supabase is not configured. The app is running with mock data.
-            Add <code className="rounded bg-slate-100 px-1 text-xs">.env.local</code> to
-            enable real auth.
+            Add your Supabase credentials to{" "}
+            <code className="rounded bg-slate-100 px-1 text-xs">.env.local</code> and
+            restart the dev server to sign in.
           </p>
-          <button
-            onClick={() => router.push("/dashboard")}
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0F2A55] to-[#2563EB] py-4 text-sm font-bold text-white"
-          >
-            Enter Demo <ArrowRight size={16} />
-          </button>
         </div>
       </div>
     )

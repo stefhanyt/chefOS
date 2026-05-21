@@ -1,12 +1,14 @@
 import type { PreparedMeal } from "@/lib/types"
 import StatusBadge, { mealStatusType } from "./StatusBadge"
-import { Home, Layers, Flame } from "lucide-react"
+import { Home, Layers, Flame, Pencil, Trash2 } from "lucide-react"
 
 interface Props {
   meal: PreparedMeal
+  onEdit?: (meal: PreparedMeal) => void
+  onRemove?: (meal: PreparedMeal) => void
 }
 
-export default function MealCard({ meal }: Props) {
+export default function MealCard({ meal, onEdit, onRemove }: Props) {
   const expiry = new Date(meal.expiry_date)
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -30,10 +32,32 @@ export default function MealCard({ meal }: Props) {
     >
       <div className="flex items-start justify-between">
         <h3 className="font-extrabold text-slate-900">{meal.name}</h3>
-        <StatusBadge
-          label={meal.status}
-          type={mealStatusType(meal.status)}
-        />
+        <div className="flex shrink-0 items-center gap-1">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(meal)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 active:bg-slate-100"
+              aria-label="Edit meal"
+            >
+              <Pencil size={15} />
+            </button>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(meal)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-red-400 active:bg-red-50"
+              aria-label="Remove meal"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+          <StatusBadge
+            label={meal.status}
+            type={mealStatusType(meal.status)}
+          />
+        </div>
       </div>
 
       <div className="mt-3 flex items-center gap-3 text-xs text-slate-400 flex-wrap">

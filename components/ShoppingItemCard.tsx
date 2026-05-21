@@ -2,14 +2,15 @@
 
 import type { ShoppingItem } from "@/lib/types"
 import StatusBadge, { priorityType } from "./StatusBadge"
-import { Check, Home } from "lucide-react"
+import { Check, Home, Trash2 } from "lucide-react"
 
 interface Props {
   item: ShoppingItem
   onPurchase?: (id: string) => void
+  onRemove?: (item: ShoppingItem) => void
 }
 
-export default function ShoppingItemCard({ item, onPurchase }: Props) {
+export default function ShoppingItemCard({ item, onPurchase, onRemove }: Props) {
   const isPurchased = item.status === "Purchased"
 
   return (
@@ -51,12 +52,23 @@ export default function ShoppingItemCard({ item, onPurchase }: Props) {
         </div>
       </div>
 
-      {/* 44px hit area, 28px visual checkbox */}
-      <button
-        onClick={() => !isPurchased && onPurchase?.(item.id)}
-        className="flex h-11 w-11 shrink-0 items-center justify-center"
-        aria-label={isPurchased ? "Purchased" : "Mark as purchased"}
-      >
+      <div className="flex shrink-0 items-center gap-0.5">
+        {!isPurchased && onRemove && (
+          <button
+            type="button"
+            onClick={() => onRemove(item)}
+            className="flex h-11 w-11 items-center justify-center text-red-400"
+            aria-label="Remove item"
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => !isPurchased && onPurchase?.(item.id)}
+          className="flex h-11 w-11 items-center justify-center"
+          aria-label={isPurchased ? "Purchased" : "Mark as purchased"}
+        >
         <span
           className={`flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-all ${
             isPurchased
@@ -68,7 +80,8 @@ export default function ShoppingItemCard({ item, onPurchase }: Props) {
             <Check size={14} className="text-white" strokeWidth={3} />
           )}
         </span>
-      </button>
+        </button>
+      </div>
     </div>
   )
 }

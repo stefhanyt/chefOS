@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { cookies } from "next/headers"
 import { supabaseEnv } from "@/lib/env"
 
-// Returns null if env vars are not set — callers fall back to mock data
+// Returns null if env vars are not set
 export function createServerSupabaseClient() {
   if (!supabaseEnv.configured) return null
 

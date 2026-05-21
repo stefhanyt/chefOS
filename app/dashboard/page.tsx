@@ -6,16 +6,17 @@ import { Plus, UtensilsCrossed, ScanLine, ShoppingCart } from "lucide-react"
 import AppShell from "@/components/AppShell"
 import StatusBadge, { pantryStatusType, mealStatusType } from "@/components/StatusBadge"
 import ErrorBanner from "@/components/ErrorBanner"
-import {
-  mockHomes,
-  mockPantryItems,
-  mockShoppingItems,
-  mockMeals,
-} from "@/lib/mock-data"
+import { useToast } from "@/components/ToastProvider"
 import { createClient } from "@/lib/supabase/client"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import type { Home, PantryItem, ShoppingItem, PreparedMeal } from "@/lib/types"
 
+const CONFIG_ERROR =
+  "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
+
 export default function DashboardPage() {
+  const { showError } = useToast()
   const [homes, setHomes] = useState<Home[]>([])
   const [alerts, setAlerts] = useState<PantryItem[]>([])
   const [openShopping, setOpenShopping] = useState<ShoppingItem[]>([])
@@ -31,15 +32,12 @@ export default function DashboardPage() {
       setError(null)
       const supabase = createClient()
       if (!supabase) {
-        setHomes(mockHomes)
-        setAlerts(mockPantryItems.filter((i) => i.status === "Critical" || i.status === "Out of Stock"))
-        setOpenShopping(mockShoppingItems.filter((i) => i.status === "Open"))
-        setExpiringSoon(mockMeals.filter((m) => m.status === "Use Soon" || m.status === "Expired"))
-        setUserInitial("M")
+        setError(CONFIG_ERROR)
         setLoading(false)
         return
       }
       try {
+        const userId = await getAuthUserId(supabase)
         const [homesRes, alertsRes, shoppingRes, mealsRes, profileRes] =
           await Promise.all([
             supabase.from("homes").select("*").is("archived_at", null).order("name").limit(10),
@@ -61,7 +59,13 @@ export default function DashboardPage() {
               .in("status", ["Use Soon", "Expired"])
               .is("archived_at", null)
               .limit(5),
-            supabase.from("profiles").select("display_name").limit(1).maybeSingle(),
+            userId
+              ? supabase
+                  .from("profiles")
+                  .select("display_name")
+                  .eq("id", userId)
+                  .maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
           ])
 
         if (homesRes.error) throw homesRes.error
@@ -72,18 +76,20 @@ export default function DashboardPage() {
         if (profileRes.data?.display_name) {
           setUserInitial(profileRes.data.display_name.charAt(0).toUpperCase())
         }
-      } catch {
+      } catch (err) {
+        logSupabaseError("dashboard load", err)
+        const msg = getSupabaseErrorMessage(err)
         setError("Failed to load dashboard. Check your connection and try again.")
+        showError(msg)
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [retryCount])
+  }, [retryCount, showError])
 
   return (
     <AppShell>
-      {/* HERO */}
       <section className="rounded-[30px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] p-7 text-white shadow-2xl shadow-blue-500/20">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-extrabold tracking-tight">ChefOS</h1>
@@ -97,7 +103,6 @@ export default function DashboardPage() {
             : `Private chef command center · ${homes.length} residence${homes.length !== 1 ? "s" : ""} active`}
         </p>
 
-        {/* QUICK ACTIONS */}
         <div className="mt-6 grid grid-cols-2 gap-3">
           <QuickAction href="/pantry" icon={<Plus size={18} />} label="Pantry Item" />
           <QuickAction
@@ -129,128 +134,121 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-
-      {/* RESIDENCES */}
-      <Section title="Residences" seeAllHref="/homes">
-        {homes.map((home) => (
-          <Link key={home.id} href={`/homes/${home.id}`}>
-            <div className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4 transition-transform active:scale-[0.98]">
-              <div className="flex items-center justify-between">
-                <h3 className="font-extrabold text-slate-900">{home.name}</h3>
-                <StatusBadge
-                  label={
-                    (home.pantry_alert_count ?? 0) > 0
-                      ? "Needs Attention"
-                      : "Active"
-                  }
-                  type={
-                    (home.pantry_alert_count ?? 0) > 0 ? "low" : "blue"
-                  }
-                />
-              </div>
-              <p className="mt-2 text-sm text-slate-500">
-                {home.pantry_alert_count ?? 0} pantry alerts ·{" "}
-                {home.expiring_meal_count ?? 0} meals expiring ·{" "}
-                {home.member_count ?? 0} staff
-              </p>
-            </div>
-          </Link>
-        ))}
-      </Section>
-
-      {/* PANTRY ALERTS */}
-      {alerts.length > 0 && (
-        <Section title="Pantry Alerts" seeAllHref="/pantry">
-          {alerts.map((item) => (
-            <div
-              key={item.id}
-              className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-extrabold text-slate-900">{item.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {(item.home as Home | undefined)?.name} ·{" "}
-                    {item.storage_location} · {item.quantity} {item.unit}{" "}
-                    remaining
-                  </p>
-                </div>
-                <StatusBadge
-                  label={item.status}
-                  type={pantryStatusType(item.status)}
-                />
-              </div>
-            </div>
-          ))}
-        </Section>
-      )}
-
-      {/* SHOPPING LIST PREVIEW */}
-      <Section title="Shopping List" seeAllHref="/shopping-list">
-        <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4">
-          {openShopping.length === 0 ? (
-            <p className="py-4 text-center text-sm text-slate-400">
-              Nothing open — all good!
-            </p>
-          ) : (
-            <div className="space-y-0">
-              {openShopping.slice(0, 4).map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
-                >
-                  <div>
-                    <p className="font-bold text-slate-900">{item.name}</p>
-                    <p className="text-xs text-slate-400">
-                      {(item.home as Home | undefined)?.name} · by{" "}
-                      {item.added_by_profile?.display_name ?? "—"}
-                    </p>
-                  </div>
-                  {item.priority !== "Normal" && (
+          <Section title="Residences" seeAllHref="/homes">
+            {homes.map((home) => (
+              <Link key={home.id} href={`/homes/${home.id}`}>
+                <div className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4 transition-transform active:scale-[0.98]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-extrabold text-slate-900">{home.name}</h3>
                     <StatusBadge
-                      label={item.priority}
+                      label={
+                        (home.pantry_alert_count ?? 0) > 0
+                          ? "Needs Attention"
+                          : "Active"
+                      }
                       type={
-                        item.priority === "Urgent" ? "critical" : "warning"
+                        (home.pantry_alert_count ?? 0) > 0 ? "low" : "blue"
                       }
                     />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Section>
-
-      {/* MEALS EXPIRING SOON */}
-      {expiringSoon.length > 0 && (
-        <Section title="Meals Expiring Soon" seeAllHref="/meals">
-          {expiringSoon.map((meal) => (
-            <div
-              key={meal.id}
-              className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-extrabold text-slate-900">{meal.name}</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {(meal.home as Home | undefined)?.name} · {meal.portions}{" "}
-                    portions
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">
+                    {home.pantry_alert_count ?? 0} pantry alerts ·{" "}
+                    {home.expiring_meal_count ?? 0} meals expiring ·{" "}
+                    {home.member_count ?? 0} staff
                   </p>
                 </div>
-                <StatusBadge
-                  label={meal.status}
-                  type={mealStatusType(meal.status)}
-                />
-              </div>
-            </div>
-          ))}
-        </Section>
-      )}
+              </Link>
+            ))}
+          </Section>
 
+          {alerts.length > 0 && (
+            <Section title="Pantry Alerts" seeAllHref="/pantry">
+              {alerts.map((item) => (
+                <div
+                  key={item.id}
+                  className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-extrabold text-slate-900">{item.name}</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {(item.home as Home | undefined)?.name} ·{" "}
+                        {item.storage_location} · {item.quantity} {item.unit}{" "}
+                        remaining
+                      </p>
+                    </div>
+                    <StatusBadge
+                      label={item.status}
+                      type={pantryStatusType(item.status)}
+                    />
+                  </div>
+                </div>
+              ))}
+            </Section>
+          )}
+
+          <Section title="Shopping List" seeAllHref="/shopping-list">
+            <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4">
+              {openShopping.length === 0 ? (
+                <p className="py-4 text-center text-sm text-slate-400">
+                  Nothing open — all good!
+                </p>
+              ) : (
+                <div className="space-y-0">
+                  {openShopping.slice(0, 4).map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                    >
+                      <div>
+                        <p className="font-bold text-slate-900">{item.name}</p>
+                        <p className="text-xs text-slate-400">
+                          {(item.home as Home | undefined)?.name} · by{" "}
+                          {item.added_by_profile?.display_name ?? "—"}
+                        </p>
+                      </div>
+                      {item.priority !== "Normal" && (
+                        <StatusBadge
+                          label={item.priority}
+                          type={
+                            item.priority === "Urgent" ? "critical" : "warning"
+                          }
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {expiringSoon.length > 0 && (
+            <Section title="Meals Expiring Soon" seeAllHref="/meals">
+              {expiringSoon.map((meal) => (
+                <div
+                  key={meal.id}
+                  className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-extrabold text-slate-900">{meal.name}</h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {(meal.home as Home | undefined)?.name} · {meal.portions}{" "}
+                        portions
+                      </p>
+                    </div>
+                    <StatusBadge
+                      label={meal.status}
+                      type={mealStatusType(meal.status)}
+                    />
+                  </div>
+                </div>
+              ))}
+            </Section>
+          )}
         </>
       )}
 
-      {/* FLOATING SCAN */}
       <Link href="/scan">
         <button className="fixed bottom-28 right-6 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] text-white shadow-2xl shadow-blue-500/40">
           <ScanLine size={24} />

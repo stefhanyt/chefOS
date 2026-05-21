@@ -6,7 +6,9 @@ import AppShell from "@/components/AppShell"
 import { ChevronLeft, Trash2, Check, Loader2, ScanLine, AlertCircle } from "lucide-react"
 import { lookupBarcode, parseProductName } from "@/lib/openfoodfacts"
 import { createClient } from "@/lib/supabase/client"
-import { mockHomes } from "@/lib/mock-data"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { useToast } from "@/components/ToastProvider"
 import type { Home } from "@/lib/types"
 
 interface ScannedItem {
@@ -20,6 +22,7 @@ interface ScannedItem {
 }
 
 export default function BatchScanPage() {
+  const { showSuccess, showError } = useToast()
   const videoRef = useRef<HTMLVideoElement>(null)
   const readerRef = useRef<any>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -41,17 +44,18 @@ export default function BatchScanPage() {
 
   async function loadHomes() {
     const supabase = createClient()
-    if (!supabase) {
-      setHomes(mockHomes)
-      setHomeId(mockHomes[0]?.id ?? "")
-      return
-    }
-    const { data } = await supabase
+    if (!supabase) return
+    const { data, error } = await supabase
       .from("homes")
       .select("id, name")
       .is("archived_at", null)
       .order("name")
-    const list = (data as Home[]) ?? mockHomes
+    if (error) {
+      logSupabaseError("batch scan homes", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    const list = (data as Home[]) ?? []
     setHomes(list)
     setHomeId(list[0]?.id ?? "")
   }
@@ -123,24 +127,57 @@ export default function BatchScanPage() {
 
   async function handleAddAll() {
     const supabase = createClient()
-    if (supabase) {
-      const rows = items
-        .filter((i) => i.productName.trim())
-        .map((i) => ({
-          name: i.productName.trim(),
-          quantity: Number(i.quantity) || 0,
-          unit: i.unit.trim(),
-          storage_location: i.location.trim(),
-          category: "Other",
-          minimum_quantity: 0,
-          status: "OK",
-          home_id: homeId || undefined,
-        }))
-      if (rows.length > 0) {
-        await supabase.from("pantry_items").insert(rows)
-      }
+    if (!supabase || !homeId) {
+      showError("Select a residence before saving.")
+      return
     }
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in.")
+      return
+    }
+
+    const valid = items.filter((i) => i.productName.trim())
+    if (valid.length === 0) {
+      showError("No items with product names to save.")
+      return
+    }
+
+    const rows = valid.map((i) => ({
+      name: i.productName.trim(),
+      quantity: Number(i.quantity) || 0,
+      unit: i.unit.trim(),
+      storage_location: i.location.trim(),
+      category: "Other",
+      minimum_quantity: 0,
+      status: "OK",
+      home_id: homeId,
+      barcode: i.barcode || null,
+      created_by: userId,
+    }))
+
+    const { error: pantryError } = await supabase.from("pantry_items").insert(rows)
+    if (pantryError) {
+      logSupabaseError("batch pantry insert", pantryError)
+      showError(getSupabaseErrorMessage(pantryError))
+      return
+    }
+
+    await supabase.from("barcode_scans").insert(
+      valid.map((i) => ({
+        home_id: homeId,
+        user_id: userId,
+        barcode: i.barcode,
+        product_name: i.productName.trim(),
+        quantity: Number(i.quantity) || 0,
+        unit: i.unit.trim(),
+        storage_location: i.location.trim(),
+        scan_mode: "batch" as const,
+      })),
+    )
+
     setSaved(true)
+    showSuccess(`${valid.length} items saved to pantry`)
   }
 
   if (saved) {

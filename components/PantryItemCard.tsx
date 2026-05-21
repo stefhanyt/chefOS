@@ -2,14 +2,21 @@
 
 import type { PantryItem } from "@/lib/types"
 import StatusBadge, { pantryStatusType } from "./StatusBadge"
-import { MapPin, Minus, Plus } from "lucide-react"
+import { MapPin, Minus, Plus, Pencil, Trash2 } from "lucide-react"
 
 interface Props {
   item: PantryItem
   onQuantityChange?: (id: string, delta: number) => void
+  onEdit?: (item: PantryItem) => void
+  onRemove?: (item: PantryItem) => void
 }
 
-export default function PantryItemCard({ item, onQuantityChange }: Props) {
+export default function PantryItemCard({
+  item,
+  onQuantityChange,
+  onEdit,
+  onRemove,
+}: Props) {
   return (
     <div
       className="
@@ -26,10 +33,32 @@ export default function PantryItemCard({ item, onQuantityChange }: Props) {
             <p className="text-xs text-slate-400 mt-0.5">{item.preferred_brand}</p>
           )}
         </div>
-        <StatusBadge
-          label={item.status}
-          type={pantryStatusType(item.status)}
-        />
+        <div className="flex shrink-0 items-center gap-1">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={() => onEdit(item)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 active:bg-slate-100"
+              aria-label="Edit item"
+            >
+              <Pencil size={15} />
+            </button>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={() => onRemove(item)}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-red-400 active:bg-red-50"
+              aria-label="Remove item"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+          <StatusBadge
+            label={item.status}
+            type={pantryStatusType(item.status)}
+          />
+        </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between">

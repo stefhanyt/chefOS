@@ -1,15 +1,22 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import MealCard from "@/components/MealCard"
 import SearchAndFilterBar from "@/components/SearchAndFilterBar"
-import { mockMeals, mockHomes } from "@/lib/mock-data"
 import { createClient } from "@/lib/supabase/client"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { computeMealStatus } from "@/lib/pantry-utils"
+import { useToast } from "@/components/ToastProvider"
 import type { Home, PreparedMeal, MealStatus } from "@/lib/types"
-import { Plus, X } from "lucide-react"
+import { Plus } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import SheetModal from "@/components/SheetModal"
+import FormField from "@/components/FormField"
+import ModalSubmitFooter from "@/components/ModalSubmitFooter"
+import { CONFIG_ERROR } from "@/lib/constants"
 
 const STATUS_FILTERS: (MealStatus | "All")[] = [
   "All",
@@ -19,6 +26,7 @@ const STATUS_FILTERS: (MealStatus | "All")[] = [
 ]
 
 export default function MealsPage() {
+  const { showSuccess, showError } = useToast()
   const [meals, setMeals] = useState<PreparedMeal[]>([])
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,7 +34,8 @@ export default function MealsPage() {
   const [retryCount, setRetryCount] = useState(0)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<MealStatus | "All">("All")
-  const [showModal, setShowModal] = useState(false)
+  const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null)
+  const [editingMeal, setEditingMeal] = useState<PreparedMeal | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -34,8 +43,7 @@ export default function MealsPage() {
       setError(null)
       const supabase = createClient()
       if (!supabase) {
-        setMeals(mockMeals)
-        setHomes(mockHomes)
+        setError(CONFIG_ERROR)
         setLoading(false)
         return
       }
@@ -55,14 +63,16 @@ export default function MealsPage() {
         if (mealsRes.error) throw mealsRes.error
         setMeals((mealsRes.data as PreparedMeal[]) ?? [])
         setHomes((homesRes.data as Home[]) ?? [])
-      } catch {
+      } catch (err) {
+        logSupabaseError("meals load", err)
         setError("Failed to load meals. Check your connection and try again.")
+        showError(getSupabaseErrorMessage(err))
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [retryCount])
+  }, [retryCount, showError])
 
   const filtered = meals.filter((m) => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
@@ -73,7 +83,7 @@ export default function MealsPage() {
   const expiring = meals.filter((m) => m.status === "Use Soon").length
   const expired = meals.filter((m) => m.status === "Expired").length
 
-  async function handleLogMeal(form: {
+  type MealForm = {
     name: string
     prepared_date: string
     expiry_date: string
@@ -81,41 +91,72 @@ export default function MealsPage() {
     storage_location: string
     reheating_instructions: string
     home_id: string
-  }) {
-    const today = new Date()
-    const expiry = new Date(form.expiry_date)
-    const daysUntilExpiry = Math.ceil(
-      (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    )
-    const status: MealStatus =
-      daysUntilExpiry < 0
-        ? "Expired"
-        : daysUntilExpiry <= 2
-          ? "Use Soon"
-          : "Fresh"
+  }
 
+  async function handleSaveMeal(form: MealForm, existingId?: string) {
+    const status = computeMealStatus(form.expiry_date)
     const supabase = createClient()
     if (!supabase) {
-      const newMeal: PreparedMeal = {
-        id: crypto.randomUUID(),
-        created_by: "local",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status,
-        notes: "",
-        ...form,
-      }
-      setMeals((prev) => [newMeal, ...prev])
-      setShowModal(false)
+      showError(CONFIG_ERROR)
       return
     }
-    const { data, error } = await supabase
+
+    if (existingId) {
+      const { data, error } = await supabase
+        .from("prepared_meals")
+        .update({ ...form, status, updated_at: new Date().toISOString() })
+        .eq("id", existingId)
+        .select("*, home:homes(id, name, location)")
+        .single()
+      if (error) {
+        logSupabaseError("meals update", error)
+        showError(getSupabaseErrorMessage(error))
+        return
+      }
+      if (data) {
+        setMeals((prev) =>
+          prev.map((m) => (m.id === existingId ? (data as PreparedMeal) : m)),
+        )
+      }
+      showSuccess("Meal updated")
+    } else {
+      const userId = await getAuthUserId(supabase)
+      if (!userId) {
+        showError("You must be signed in to log meals.")
+        return
+      }
+      const { data, error } = await supabase
+        .from("prepared_meals")
+        .insert({ ...form, status, created_by: userId, notes: "" })
+        .select("*, home:homes(id, name, location)")
+        .single()
+      if (error) {
+        logSupabaseError("meals insert", error)
+        showError(getSupabaseErrorMessage(error))
+        return
+      }
+      if (data) setMeals((prev) => [data as PreparedMeal, ...prev])
+      showSuccess("Meal logged")
+    }
+    setModalMode(null)
+    setEditingMeal(null)
+  }
+
+  async function handleRemoveMeal(meal: PreparedMeal) {
+    if (!confirm(`Remove "${meal.name}" from prepared meals?`)) return
+    const supabase = createClient()
+    if (!supabase) return
+    const { error } = await supabase
       .from("prepared_meals")
-      .insert({ ...form, status })
-      .select("*, home:homes(id, name, location)")
-      .single()
-    if (!error && data) setMeals((prev) => [data as PreparedMeal, ...prev])
-    setShowModal(false)
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", meal.id)
+    if (error) {
+      logSupabaseError("meals archive", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setMeals((prev) => prev.filter((m) => m.id !== meal.id))
+    showSuccess("Meal removed")
   }
 
   return (
@@ -129,7 +170,7 @@ export default function MealsPage() {
         }
         action={
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => setModalMode("add")}
             className="flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30"
           >
             <Plus size={15} />
@@ -177,134 +218,239 @@ export default function MealsPage() {
             : "No meals logged yet. Log your first meal!"}
         </div>
       ) : (
-        filtered.map((meal) => <MealCard key={meal.id} meal={meal} />)
+        filtered.map((meal) => (
+          <MealCard
+            key={meal.id}
+            meal={meal}
+            onEdit={(m) => {
+              setEditingMeal(m)
+              setModalMode("edit")
+            }}
+            onRemove={handleRemoveMeal}
+          />
+        ))
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-y-auto rounded-t-[32px] bg-white px-6 pb-10 pt-6 shadow-2xl max-h-[90vh]">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-slate-900">Log Meal</h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <LogMealForm
-              homes={homes}
-              onSave={handleLogMeal}
-              onClose={() => setShowModal(false)}
-            />
-          </div>
-        </div>
+      {modalMode && (
+        <LogMealForm
+          mode={modalMode}
+          meal={editingMeal}
+          homes={homes}
+          onSave={handleSaveMeal}
+          onClose={() => {
+            setModalMode(null)
+            setEditingMeal(null)
+          }}
+        />
       )}
     </AppShell>
   )
 }
 
+function isExpiryOnOrAfterPrep(prep: string, expiry: string): boolean {
+  if (!prep || !expiry) return true
+  return expiry >= prep
+}
+
 function LogMealForm({
+  mode,
+  meal,
   homes,
   onSave,
   onClose,
 }: {
+  mode: "add" | "edit"
+  meal: PreparedMeal | null
   homes: Home[]
-  onSave: (form: {
-    name: string
-    prepared_date: string
-    expiry_date: string
-    portions: number
-    storage_location: string
-    reheating_instructions: string
-    home_id: string
-  }) => void
+  onSave: (
+    form: {
+      name: string
+      prepared_date: string
+      expiry_date: string
+      portions: number
+      storage_location: string
+      reheating_instructions: string
+      home_id: string
+    },
+    existingId?: string,
+  ) => void | Promise<void>
   onClose: () => void
 }) {
+  const formId = "log-meal-form"
   const today = new Date().toISOString().split("T")[0]
-  const [name, setName] = useState("")
-  const [prepDate, setPrepDate] = useState(today)
-  const [expiryDate, setExpiryDate] = useState("")
-  const [portions, setPortions] = useState("2")
-  const [storageLocation, setStorageLocation] = useState("")
-  const [reheating, setReheating] = useState("")
-  const [homeId, setHomeId] = useState(homes[0]?.id ?? "")
+  const [name, setName] = useState(meal?.name ?? "")
+  const [prepDate, setPrepDate] = useState(meal?.prepared_date ?? today)
+  const [expiryDate, setExpiryDate] = useState(meal?.expiry_date ?? "")
+  const [portions, setPortions] = useState(String(meal?.portions ?? 2))
+  const [storageLocation, setStorageLocation] = useState(meal?.storage_location ?? "")
+  const [reheating, setReheating] = useState(meal?.reheating_instructions ?? "")
+  const [homeId, setHomeId] = useState(meal?.home_id ?? "")
+  const [saving, setSaving] = useState(false)
+
+  // Sync residence when homes load or modal opens (initial useState(homes[0]) was often "")
+  useEffect(() => {
+    if (homes.length === 0) {
+      setHomeId("")
+      return
+    }
+    setHomeId((current) => {
+      if (current && homes.some((h) => h.id === current)) return current
+      return homes[0].id
+    })
+  }, [homes])
+
+  const validation = useMemo(() => {
+    const hasName = name.trim().length > 0
+    const hasExpiry = expiryDate.length > 0
+    const hasPrep = prepDate.length > 0
+    const hasHome = homeId.length > 0 && homes.some((h) => h.id === homeId)
+    const portionsNum = Number(portions)
+    const hasPortions = portions.trim() !== "" && !Number.isNaN(portionsNum) && portionsNum > 0
+    const datesValid = isExpiryOnOrAfterPrep(prepDate, expiryDate)
+
+    return {
+      hasName,
+      hasExpiry,
+      hasPrep,
+      hasHome,
+      hasPortions,
+      datesValid,
+      canSubmit:
+        hasName &&
+        hasExpiry &&
+        hasPrep &&
+        hasHome &&
+        hasPortions &&
+        datesValid &&
+        homes.length > 0 &&
+        !saving,
+      missing: [
+        !hasName && "meal name",
+        !hasExpiry && "expiry date",
+        !hasPrep && "prepared date",
+        !hasHome && "residence",
+        !hasPortions && "portions (must be > 0)",
+        hasPrep && hasExpiry && !datesValid && "expiry must be on or after prepared date",
+        homes.length === 0 && "at least one residence (add a home first)",
+      ].filter(Boolean) as string[],
+    }
+  }, [name, expiryDate, prepDate, homeId, portions, homes, saving])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validation.canSubmit) return
+
+    setSaving(true)
+    try {
+      await onSave(
+        {
+          name: name.trim(),
+          prepared_date: prepDate,
+          expiry_date: expiryDate,
+          portions: Number(portions) || 1,
+          storage_location: storageLocation.trim(),
+          reheating_instructions: reheating.trim(),
+          home_id: homeId,
+        },
+        meal?.id,
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {homes.length > 1 && (
-        <div>
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Residence
-          </label>
-          <select
-            value={homeId}
-            onChange={(e) => setHomeId(e.target.value)}
-            className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            {homes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
+    <SheetModal
+      open
+      onClose={onClose}
+      title={mode === "edit" ? "Edit Meal" : "Log Meal"}
+      footer={
+        <ModalSubmitFooter
+          formId={formId}
+          label={mode === "edit" ? "Save Changes" : "Save Meal"}
+          saving={saving}
+          disabled={!validation.canSubmit}
+          missing={validation.missing}
+        />
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        {homes.length === 0 ? (
+          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Add a residence under Settings → Homes before logging meals.
+          </p>
+        ) : (
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Residence
+            </label>
+            {homes.length === 1 ? (
+              <p className="rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">
+                {homes[0].name}
+              </p>
+            ) : (
+              <select
+                required
+                value={homeId}
+                onChange={(e) => setHomeId(e.target.value)}
+                className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                {homes.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        <FormField
+          label="Meal Name"
+          value={name}
+          onChange={setName}
+          placeholder="e.g. Chicken Soup"
+          required
+        />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <FormField
+            label="Prepared Date"
+            value={prepDate}
+            onChange={setPrepDate}
+            type="date"
+            required
+          />
+          <FormField
+            label="Expiry Date"
+            value={expiryDate}
+            onChange={setExpiryDate}
+            type="date"
+            required
+            min={prepDate || undefined}
+          />
         </div>
-      )}
-      <FormField label="Meal Name" value={name} onChange={setName} placeholder="e.g. Chicken Soup" />
-      <div className="grid grid-cols-2 gap-3">
-        <FormField label="Prepared Date" value={prepDate} onChange={setPrepDate} type="date" />
-        <FormField label="Expiry Date" value={expiryDate} onChange={setExpiryDate} type="date" />
-      </div>
-      <FormField label="Portions" value={portions} onChange={setPortions} placeholder="e.g. 4" type="number" />
-      <FormField label="Storage Location" value={storageLocation} onChange={setStorageLocation} placeholder="e.g. Main Fridge" />
-      <FormField label="Reheating Instructions" value={reheating} onChange={setReheating} placeholder="e.g. Stove, medium heat" />
-      <button
-        disabled={!name.trim() || !expiryDate || !homeId}
-        onClick={() =>
-          onSave({
-            name: name.trim(),
-            prepared_date: prepDate,
-            expiry_date: expiryDate,
-            portions: Number(portions) || 1,
-            storage_location: storageLocation.trim(),
-            reheating_instructions: reheating.trim(),
-            home_id: homeId,
-          })
-        }
-        className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
-      >
-        Save Meal
-      </button>
-    </div>
-  )
-}
-
-function FormField({
-  label,
-  placeholder = "",
-  type = "text",
-  value,
-  onChange,
-}: {
-  label: string
-  placeholder?: string
-  type?: string
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-      <input
-        type={type}
-        inputMode={type === "number" ? "numeric" : undefined}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
-    </div>
+        <FormField
+          label="Portions"
+          value={portions}
+          onChange={setPortions}
+          placeholder="e.g. 4"
+          type="number"
+          required
+          min={1}
+        />
+        <FormField
+          label="Storage Location"
+          value={storageLocation}
+          onChange={setStorageLocation}
+          placeholder="e.g. Main Fridge"
+        />
+        <FormField
+          label="Reheating Instructions"
+          value={reheating}
+          onChange={setReheating}
+          placeholder="e.g. Stove, medium heat"
+        />
+      </form>
+    </SheetModal>
   )
 }

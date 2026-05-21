@@ -1,14 +1,21 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import PantryItemCard from "@/components/PantryItemCard"
 import SearchAndFilterBar from "@/components/SearchAndFilterBar"
-import { mockPantryItems, mockHomes } from "@/lib/mock-data"
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
+import SheetModal from "@/components/SheetModal"
+import FormField from "@/components/FormField"
+import ModalSubmitFooter from "@/components/ModalSubmitFooter"
+import { createClient } from "@/lib/supabase/client"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { computePantryStatus } from "@/lib/pantry-utils"
+import { useToast } from "@/components/ToastProvider"
+import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home, PantryItem, PantryStatus } from "@/lib/types"
-import { Plus, X } from "lucide-react"
+import { Plus } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 
 const STATUS_FILTERS: (PantryStatus | "All")[] = [
@@ -19,7 +26,18 @@ const STATUS_FILTERS: (PantryStatus | "All")[] = [
   "OK",
 ]
 
+type PantryForm = {
+  name: string
+  quantity: number
+  unit: string
+  category: string
+  storage_location: string
+  minimum_quantity: number
+  home_id: string
+}
+
 export default function PantryPage() {
+  const { showSuccess, showError } = useToast()
   const [items, setItems] = useState<PantryItem[]>([])
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,94 +45,55 @@ export default function PantryPage() {
   const [retryCount, setRetryCount] = useState(0)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<PantryStatus | "All">("All")
-  const [showModal, setShowModal] = useState(false)
+  const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null)
+  const [editingItem, setEditingItem] = useState<PantryItem | null>(null)
+
+  async function load() {
+    setLoading(true)
+    setError(null)
+    const supabase = createClient()
+    if (!supabase) {
+      setError(CONFIG_ERROR)
+      setLoading(false)
+      return
+    }
+    try {
+      const [itemsRes, homesRes] = await Promise.all([
+        supabase
+          .from("pantry_items")
+          .select("*, home:homes(id, name, location)")
+          .is("archived_at", null)
+          .order("status")
+          .order("name"),
+        supabase.from("homes").select("id, name").is("archived_at", null).order("name"),
+      ])
+      if (itemsRes.error) throw itemsRes.error
+      setItems((itemsRes.data as PantryItem[]) ?? [])
+      setHomes((homesRes.data as Home[]) ?? [])
+    } catch (err) {
+      logSupabaseError("pantry load", err)
+      setError("Failed to load pantry.")
+      showError(getSupabaseErrorMessage(err))
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      setLoading(true)
-      setError(null)
-      const supabase = createClient()
-      if (!supabase) {
-        setItems(mockPantryItems)
-        setHomes(mockHomes)
-        setLoading(false)
-        return
-      }
-      try {
-        const [itemsRes, homesRes] = await Promise.all([
-          supabase
-            .from("pantry_items")
-            .select("*, home:homes(id, name, location)")
-            .is("archived_at", null)
-            .order("status")
-            .order("name"),
-          supabase.from("homes").select("id, name").is("archived_at", null).order("name"),
-        ])
-        if (itemsRes.error) throw itemsRes.error
-        setItems((itemsRes.data as PantryItem[]) ?? [])
-        setHomes((homesRes.data as Home[]) ?? [])
-      } catch {
-        setError("Failed to load pantry. Check your connection and try again.")
-      } finally {
-        setLoading(false)
-      }
-    }
     load()
   }, [retryCount])
 
   useEffect(() => {
     const supabase = createClient()
     if (!supabase) return
-
     const channel = supabase
       .channel("pantry-items-live")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "pantry_items" },
-        async (payload) => {
-          const id = (payload.new as any).id as string
-          const { data } = await supabase
-            .from("pantry_items")
-            .select("*, home:homes(id, name, location)")
-            .eq("id", id)
-            .is("archived_at", null)
-            .single()
-          if (!data) return
-          setItems((prev) =>
-            prev.find((i) => i.id === id) ? prev : [data as PantryItem, ...prev]
-          )
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "pantry_items" },
-        async (payload) => {
-          const updated = payload.new as any
-          if (updated.archived_at) {
-            setItems((prev) => prev.filter((i) => i.id !== updated.id))
-            return
-          }
-          const { data } = await supabase
-            .from("pantry_items")
-            .select("*, home:homes(id, name, location)")
-            .eq("id", updated.id)
-            .single()
-          if (data) {
-            setItems((prev) =>
-              prev.map((i) => (i.id === updated.id ? (data as PantryItem) : i))
-            )
-          }
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "pantry_items" },
-        (payload) => {
-          setItems((prev) => prev.filter((i) => i.id !== (payload.old as any).id))
-        }
+        { event: "*", schema: "public", table: "pantry_items" },
+        () => load(),
       )
       .subscribe()
-
     return () => {
       supabase.removeChannel(channel)
     }
@@ -124,68 +103,108 @@ export default function PantryPage() {
     const matchSearch =
       item.name.toLowerCase().includes(search.toLowerCase()) ||
       item.category.toLowerCase().includes(search.toLowerCase())
-    const matchStatus =
-      statusFilter === "All" || item.status === statusFilter
+    const matchStatus = statusFilter === "All" || item.status === statusFilter
     return matchSearch && matchStatus
   })
 
   async function handleQuantityChange(id: string, delta: number) {
     const item = items.find((i) => i.id === id)
     if (!item) return
-
     const newQty = Math.max(0, item.quantity + delta)
-    let status: PantryStatus = "OK"
-    if (newQty === 0) status = "Out of Stock"
-    else if (newQty < item.minimum_quantity) status = "Critical"
-    else if (newQty <= item.minimum_quantity * 1.25) status = "Low"
-
-    // Optimistic update
+    const status = computePantryStatus(newQty, item.minimum_quantity)
     setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantity: newQty, status } : i))
+      prev.map((i) => (i.id === id ? { ...i, quantity: newQty, status } : i)),
     )
-
     const supabase = createClient()
     if (!supabase) return
-    await supabase
+    const { error } = await supabase
       .from("pantry_items")
       .update({ quantity: newQty, status, updated_at: new Date().toISOString() })
       .eq("id", id)
+    if (error) {
+      logSupabaseError("pantry quantity update", error)
+      showError(getSupabaseErrorMessage(error))
+      setItems((prev) => prev.map((i) => (i.id === id ? item : i)))
+    }
   }
 
-  async function handleAddItem(form: {
-    name: string
-    quantity: number
-    unit: string
-    category: string
-    storage_location: string
-    minimum_quantity: number
-    home_id: string
-  }) {
+  async function saveItem(form: PantryForm, existingId?: string) {
     const supabase = createClient()
     if (!supabase) {
-      const newItem: PantryItem = {
-        id: crypto.randomUUID(),
-        created_by: "local",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status: "OK",
-        ...form,
-      }
-      setItems((prev) => [newItem, ...prev])
-      setShowModal(false)
+      showError(CONFIG_ERROR)
       return
     }
-    const { data, error } = await supabase
+    const status = computePantryStatus(form.quantity, form.minimum_quantity)
+    const payload = {
+      ...form,
+      status,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (existingId) {
+      const { data, error } = await supabase
+        .from("pantry_items")
+        .update(payload)
+        .eq("id", existingId)
+        .select("*, home:homes(id, name, location)")
+        .single()
+      if (error) {
+        logSupabaseError("pantry update", error)
+        showError(getSupabaseErrorMessage(error))
+        return
+      }
+      if (data) {
+        setItems((prev) =>
+          prev.map((i) => (i.id === existingId ? (data as PantryItem) : i)),
+        )
+      }
+      showSuccess("Pantry item updated")
+    } else {
+      const userId = await getAuthUserId(supabase)
+      if (!userId) {
+        showError("You must be signed in.")
+        return
+      }
+      const { data, error } = await supabase
+        .from("pantry_items")
+        .insert({ ...payload, created_by: userId })
+        .select("*, home:homes(id, name, location)")
+        .single()
+      if (error) {
+        logSupabaseError("pantry insert", error)
+        showError(getSupabaseErrorMessage(error))
+        return
+      }
+      if (data) setItems((prev) => [data as PantryItem, ...prev])
+      showSuccess("Pantry item added")
+    }
+    closeModal()
+  }
+
+  async function handleRemove(item: PantryItem) {
+    if (!confirm(`Remove "${item.name}" from pantry?`)) return
+    const supabase = createClient()
+    if (!supabase) return
+    const { error } = await supabase
       .from("pantry_items")
-      .insert({ ...form, status: "OK" })
-      .select("*, home:homes(id, name, location)")
-      .single()
-    if (!error && data) setItems((prev) => [data as PantryItem, ...prev])
-    setShowModal(false)
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", item.id)
+    if (error) {
+      logSupabaseError("pantry archive", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    showSuccess("Item removed")
+  }
+
+  function closeModal() {
+    setModalMode(null)
+    setEditingItem(null)
   }
 
   const alertCount = items.filter(
-    (i) => i.status === "Critical" || i.status === "Out of Stock"
+    (i) => i.status === "Critical" || i.status === "Out of Stock",
   ).length
 
   return (
@@ -195,11 +214,11 @@ export default function PantryPage() {
         subtitle={
           loading
             ? "Loading…"
-            : `${items.length} items${alertCount > 0 ? ` · ${alertCount} alerts` : ""}${isSupabaseConfigured ? " · live" : ""}`
+            : `${items.length} items${alertCount > 0 ? ` · ${alertCount} alerts` : ""}`
         }
         action={
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => setModalMode("add")}
             className="flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30"
           >
             <Plus size={15} />
@@ -212,14 +231,9 @@ export default function PantryPage() {
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
 
-      <SearchAndFilterBar
-        value={search}
-        onChange={setSearch}
-        placeholder="Search pantry…"
-      />
+      <SearchAndFilterBar value={search} onChange={setSearch} placeholder="Search pantry…" />
 
-      {/* STATUS FILTER CHIPS */}
-      <div className="mb-5 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <div className="mb-5 flex gap-2 overflow-x-auto pb-1">
         {STATUS_FILTERS.map((s) => (
           <button
             key={s}
@@ -253,151 +267,141 @@ export default function PantryPage() {
             key={item.id}
             item={item}
             onQuantityChange={handleQuantityChange}
+            onEdit={(i) => {
+              setEditingItem(i)
+              setModalMode("edit")
+            }}
+            onRemove={handleRemove}
           />
         ))
       )}
 
-      {/* ADD PANTRY ITEM MODAL */}
-      {showModal && (
-        <Modal title="Add Pantry Item" onClose={() => setShowModal(false)}>
-          <AddPantryForm
-            homes={homes}
-            onSave={handleAddItem}
-            onClose={() => setShowModal(false)}
-          />
-        </Modal>
+      {modalMode && (
+        <PantryItemFormModal
+          mode={modalMode}
+          homes={homes}
+          item={editingItem}
+          onClose={closeModal}
+          onSave={saveItem}
+        />
       )}
     </AppShell>
   )
 }
 
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string
-  onClose: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm">
-      <div className="w-full max-w-md overflow-y-auto rounded-t-[32px] bg-white px-6 pb-10 pt-6 shadow-2xl max-h-[90vh]">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-extrabold text-slate-900">{title}</h2>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-          >
-            <X size={16} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function AddPantryForm({
+function PantryItemFormModal({
+  mode,
   homes,
-  onSave,
+  item,
   onClose,
+  onSave,
 }: {
+  mode: "add" | "edit"
   homes: Home[]
-  onSave: (form: {
-    name: string
-    quantity: number
-    unit: string
-    category: string
-    storage_location: string
-    minimum_quantity: number
-    home_id: string
-  }) => void
+  item: PantryItem | null
   onClose: () => void
+  onSave: (form: PantryForm, existingId?: string) => void | Promise<void>
 }) {
-  const [name, setName] = useState("")
-  const [quantity, setQuantity] = useState("0")
-  const [unit, setUnit] = useState("")
-  const [category, setCategory] = useState("")
-  const [storageLocation, setStorageLocation] = useState("")
-  const [minQty, setMinQty] = useState("0")
-  const [homeId, setHomeId] = useState(homes[0]?.id ?? "")
+  const formId = "pantry-item-form"
+  const [name, setName] = useState(item?.name ?? "")
+  const [quantity, setQuantity] = useState(String(item?.quantity ?? 0))
+  const [unit, setUnit] = useState(item?.unit ?? "")
+  const [category, setCategory] = useState(item?.category ?? "")
+  const [storageLocation, setStorageLocation] = useState(item?.storage_location ?? "")
+  const [minQty, setMinQty] = useState(String(item?.minimum_quantity ?? 0))
+  const [homeId, setHomeId] = useState(item?.home_id ?? "")
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (homes.length > 0 && !homeId) setHomeId(homes[0].id)
+  }, [homes, homeId])
+
+  const validation = useMemo(() => {
+    const missing: string[] = []
+    if (!name.trim()) missing.push("item name")
+    if (!homeId) missing.push("residence")
+    if (homes.length === 0) missing.push("add a residence first")
+    return {
+      canSubmit: missing.length === 0 && !saving,
+      missing,
+    }
+  }, [name, homeId, homes.length, saving])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validation.canSubmit) return
+    setSaving(true)
+    try {
+      await onSave(
+        {
+          name: name.trim(),
+          quantity: Number(quantity) || 0,
+          unit: unit.trim(),
+          category: category.trim(),
+          storage_location: storageLocation.trim(),
+          minimum_quantity: Number(minQty) || 0,
+          home_id: homeId,
+        },
+        item?.id,
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {homes.length > 1 && (
-        <div>
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Residence
-          </label>
-          <select
-            value={homeId}
-            onChange={(e) => setHomeId(e.target.value)}
-            className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            {homes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
+    <SheetModal
+      open
+      onClose={onClose}
+      title={mode === "edit" ? "Edit Pantry Item" : "Add Pantry Item"}
+      footer={
+        <ModalSubmitFooter
+          formId={formId}
+          label={mode === "edit" ? "Save Changes" : "Save Item"}
+          saving={saving}
+          disabled={!validation.canSubmit}
+          missing={validation.missing}
+        />
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        {homes.length === 0 ? (
+          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Add a residence under Settings → Homes first.
+          </p>
+        ) : (
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Residence
+            </label>
+            {homes.length === 1 ? (
+              <p className="rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">
+                {homes[0].name}
+              </p>
+            ) : (
+              <select
+                value={homeId}
+                onChange={(e) => setHomeId(e.target.value)}
+                className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900"
+              >
+                {homes.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+        <FormField label="Item Name" value={name} onChange={setName} placeholder="e.g. Organic Eggs" required />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Quantity" value={quantity} onChange={setQuantity} type="number" />
+          <FormField label="Unit" value={unit} onChange={setUnit} placeholder="e.g. dozen" />
         </div>
-      )}
-      <Field label="Item Name" value={name} onChange={setName} placeholder="e.g. Organic Eggs" />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Quantity" value={quantity} onChange={setQuantity} placeholder="0" type="number" />
-        <Field label="Unit" value={unit} onChange={setUnit} placeholder="e.g. dozen" />
-      </div>
-      <Field label="Category" value={category} onChange={setCategory} placeholder="e.g. Dairy & Eggs" />
-      <Field label="Storage Location" value={storageLocation} onChange={setStorageLocation} placeholder="e.g. Fridge" />
-      <Field label="Min Quantity" value={minQty} onChange={setMinQty} placeholder="0" type="number" />
-      <button
-        disabled={!name.trim() || !homeId}
-        onClick={() =>
-          onSave({
-            name: name.trim(),
-            quantity: Number(quantity) || 0,
-            unit: unit.trim(),
-            category: category.trim(),
-            storage_location: storageLocation.trim(),
-            minimum_quantity: Number(minQty) || 0,
-            home_id: homeId,
-          })
-        }
-        className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
-      >
-        Save Item
-      </button>
-    </div>
-  )
-}
-
-function Field({
-  label,
-  placeholder,
-  type = "text",
-  value,
-  onChange,
-}: {
-  label: string
-  placeholder: string
-  type?: string
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-      <input
-        type={type}
-        inputMode={type === "number" ? "numeric" : undefined}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
-    </div>
+        <FormField label="Category" value={category} onChange={setCategory} placeholder="e.g. Dairy" />
+        <FormField label="Storage Location" value={storageLocation} onChange={setStorageLocation} placeholder="e.g. Fridge" />
+        <FormField label="Min Quantity" value={minQty} onChange={setMinQty} type="number" />
+      </form>
+    </SheetModal>
   )
 }

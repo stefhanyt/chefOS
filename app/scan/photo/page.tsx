@@ -5,7 +5,9 @@ import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import { ChevronLeft, Check, Loader2, AlertCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { mockHomes } from "@/lib/mock-data"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { useToast } from "@/components/ToastProvider"
 import type { Home } from "@/lib/types"
 
 const CATEGORIES = [
@@ -29,6 +31,7 @@ interface DetectedItem {
 type Step = "upload" | "analyzing" | "review" | "detail" | "saved"
 
 export default function PhotoScanPage() {
+  const { showSuccess, showError } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState<Step>("upload")
   const [imageBase64, setImageBase64] = useState<string | null>(null)
@@ -48,16 +51,18 @@ export default function PhotoScanPage() {
 
   async function loadHomes() {
     const supabase = createClient()
-    if (!supabase) {
-      setHomes(mockHomes)
-      return
-    }
-    const { data } = await supabase
+    if (!supabase) return
+    const { data, error: dbError } = await supabase
       .from("homes")
       .select("id, name")
       .is("archived_at", null)
       .order("name")
-    setHomes((data as Home[]) ?? mockHomes)
+    if (dbError) {
+      logSupabaseError("photo scan homes", dbError)
+      showError(getSupabaseErrorMessage(dbError))
+      return
+    }
+    setHomes((data as Home[]) ?? [])
   }
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -134,30 +139,65 @@ export default function PhotoScanPage() {
 
   async function saveAndNext() {
     const item = current
+    if (!item?.name.trim() || !item.home_id) {
+      showError("Item name and residence are required.")
+      return
+    }
     const supabase = createClient()
-    if (supabase && item.name.trim()) {
-      if (item.destination === "Pantry") {
-        await supabase.from("pantry_items").insert({
-          name: item.name.trim(),
-          quantity: item.quantity,
-          unit: item.unit.trim(),
-          category: item.category,
-          storage_location: item.storage_location.trim(),
-          minimum_quantity: Number(item.minimum_quantity) || 0,
-          status: "OK",
-          home_id: item.home_id || undefined,
-        })
-      } else if (item.destination === "Shopping List") {
-        await supabase.from("shopping_items").insert({
-          name: item.name.trim(),
-          quantity_needed: `${item.quantity} ${item.unit}`.trim(),
-          category: item.category,
-          priority: "Normal",
-          status: "Open",
-          home_id: item.home_id || undefined,
-        })
+    if (!supabase) {
+      showError("Database not configured.")
+      return
+    }
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in.")
+      return
+    }
+
+    if (item.destination === "Pantry") {
+      const { error: pantryError } = await supabase.from("pantry_items").insert({
+        name: item.name.trim(),
+        quantity: item.quantity,
+        unit: item.unit.trim(),
+        category: item.category,
+        storage_location: item.storage_location.trim(),
+        minimum_quantity: Number(item.minimum_quantity) || 0,
+        status: "OK",
+        home_id: item.home_id,
+        created_by: userId,
+      })
+      if (pantryError) {
+        logSupabaseError("photo pantry insert", pantryError)
+        showError(getSupabaseErrorMessage(pantryError))
+        return
+      }
+    } else if (item.destination === "Shopping List") {
+      const { error: shopError } = await supabase.from("shopping_items").insert({
+        name: item.name.trim(),
+        quantity_needed: `${item.quantity} ${item.unit}`.trim(),
+        category: item.category,
+        priority: "Normal",
+        status: "Open",
+        home_id: item.home_id,
+        added_by: userId,
+      })
+      if (shopError) {
+        logSupabaseError("photo shopping insert", shopError)
+        showError(getSupabaseErrorMessage(shopError))
+        return
       }
     }
+
+    await supabase.from("barcode_scans").insert({
+      home_id: item.home_id,
+      user_id: userId,
+      product_name: item.name.trim(),
+      quantity: item.quantity,
+      unit: item.unit.trim(),
+      storage_location: item.storage_location.trim(),
+      scan_mode: "photo",
+    })
+
     setConfirmed((prev) => [...prev, item])
     const next = currentIndex + 1
     if (next >= items.length) {

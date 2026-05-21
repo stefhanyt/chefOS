@@ -9,7 +9,7 @@ if (!key) missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 if (missing.length > 0 && typeof window === 'undefined') {
   console.warn(
     `\n⚠️  ChefOS — Supabase not configured (missing: ${missing.join(', ')})\n` +
-    `   The app will run with mock data.\n` +
+    `   Configure Supabase in .env.local to enable the app.\n` +
     `   To connect to a real database:\n` +
     `   1. cp .env.local.example .env.local\n` +
     `   2. Fill in NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY\n` +

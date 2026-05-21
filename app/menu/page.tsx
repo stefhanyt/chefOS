@@ -1,183 +1,459 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
-import { mockHomes, mockDishLibrary } from "@/lib/mock-data"
-import { ChevronLeft, ChevronRight, Plus, X, Check } from "lucide-react"
+import ErrorBanner from "@/components/ErrorBanner"
+import { createClient } from "@/lib/supabase/client"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import {
+  buildWeekMenuFromItems,
+  ensureWeeklyMenu,
+  type MenuDishEntry,
+  type WeekMenu,
+} from "@/lib/supabase/menu-data"
+import {
+  MENU_CATEGORIES,
+  MENU_DAYS,
+  MENU_SHORT_DAYS,
+  getWeekDates,
+  getWeekStart,
+  formatMenuDate,
+  weekLabel,
+} from "@/lib/menu-utils"
+import { useToast } from "@/components/ToastProvider"
+import type { DishLibraryItem, Home, MenuItemRow } from "@/lib/types"
+import { ChevronLeft, ChevronRight, X, Check } from "lucide-react"
 
-const CATEGORIES = ["Mains", "Sides", "Soups", "Desserts", "Sauces & Condiments"]
-
-const DISH_LIBRARY: Record<string, string[]> = {
-  Mains: ["Lemon Herb Salmon", "Truffle Risotto", "Beef Tenderloin", "Roasted Chicken", "Seared Scallops", "Lamb Rack", "Sea Bass en Papillote", "Duck Confit"],
-  Sides: ["Roasted Root Vegetables", "Sauteed Broccolini", "Truffle Mashed Potato", "Wild Rice Pilaf", "Grilled Asparagus", "Glazed Carrots", "Cauliflower Gratin"],
-  Soups: ["Chicken Soup", "French Onion", "Butternut Squash", "Lobster Bisque", "Minestrone"],
-  Desserts: ["Chocolate Fondant", "Panna Cotta", "Tarte Tatin", "Lemon Posset", "Cheese Board", "Seasonal Fruit Plate"],
-  "Sauces & Condiments": ["Bearnaise", "Red Wine Jus", "Chimichurri", "Truffle Butter", "Salsa Verde", "Hollandaise"],
-}
-
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-const SHORT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 const PORTIONS = [1, 2, 3, 4, 5, 6, 8, 10, 12]
-
-interface DishEntry {
-  dish: string
-  portions: number
-  notes: string
-}
-
-type DayMenu = Record<string, DishEntry[]>
-type WeekMenu = Record<number, DayMenu>
-type AllMenus = Record<string, WeekMenu>
-
-function getWeekDates(offset: number): Date[] {
-  const now = new Date()
-  const day = now.getDay()
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - ((day + 6) % 7) + offset * 7)
-  return DAYS.map((_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d
-  })
-}
-
-function fmt(d: Date) {
-  return d.toLocaleDateString("en-CA", { month: "short", day: "numeric" })
-}
-
-function weekLabel(offset: number) {
-  if (offset === 0) return "This Week"
-  if (offset === 1) return "Next Week"
-  if (offset === -1) return "Last Week"
-  return `Week ${offset > 0 ? "+" : ""}${offset}`
-}
+const CONFIG_ERROR =
+  "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
 
 export default function MenuPage() {
-  const [homeId, setHomeId] = useState(mockHomes[0].id)
+  const { showSuccess, showError } = useToast()
+  const [homes, setHomes] = useState<Home[]>([])
+  const [homeId, setHomeId] = useState("")
   const [weekOffset, setWeekOffset] = useState(0)
   const [view, setView] = useState<"week" | "day" | "picker" | "confirmed">("week")
   const [selectedDay, setSelectedDay] = useState(0)
   const [selectedCat, setSelectedCat] = useState("")
-  const [menus, setMenus] = useState<AllMenus>({})
-  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({})
-  const [toast, setToast] = useState(false)
+  const [menu, setMenu] = useState<WeekMenu>({})
+  const [menuId, setMenuId] = useState<string | null>(null)
+  const [isConfirmed, setIsConfirmed] = useState(false)
+  const [dishLibrary, setDishLibrary] = useState<DishLibraryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const home = mockHomes.find(h => h.id === homeId) ?? mockHomes[0]
-  const weekKey = `${homeId}-${weekOffset}`
   const dates = getWeekDates(weekOffset)
-  const menu: WeekMenu = menus[weekKey] ?? {}
-  const isConfirmed = !!confirmed[weekKey]
+  const weekStart = getWeekStart(weekOffset)
+  const home = homes.find((h) => h.id === homeId)
 
-  function dayMenu(i: number): DayMenu { return menu[i] ?? {} }
-  function dayCount(i: number) { return Object.values(dayMenu(i)).reduce((s, a) => s + a.length, 0) }
-  const totalDishes = DAYS.reduce((s, _, i) => s + dayCount(i), 0)
+  const loadMenu = useCallback(async () => {
+    if (!homeId) return
+    const supabase = createClient()
+    if (!supabase) {
+      setError(CONFIG_ERROR)
+      return
+    }
+    const { data: weeklyMenu } = await supabase
+      .from("weekly_menus")
+      .select("id, status")
+      .eq("home_id", homeId)
+      .eq("week_start", weekStart)
+      .maybeSingle()
 
-  function addDish(day: number, cat: string, dish: string) {
-    setMenus(prev => {
-      const wk = prev[weekKey] ?? {}
-      const d = wk[day] ?? {}
-      const ex = d[cat] ?? []
-      if (ex.find(x => x.dish === dish)) return prev
-      return { ...prev, [weekKey]: { ...wk, [day]: { ...d, [cat]: [...ex, { dish, portions: 2, notes: "" }] } } }
+    if (!weeklyMenu) {
+      setMenuId(null)
+      setMenu({})
+      setIsConfirmed(false)
+      return
+    }
+
+    setMenuId(weeklyMenu.id)
+    setIsConfirmed(weeklyMenu.status === "confirmed")
+
+    const { data: items, error: itemsError } = await supabase
+      .from("menu_items")
+      .select("*")
+      .eq("menu_id", weeklyMenu.id)
+
+    if (itemsError) {
+      logSupabaseError("menu items load", itemsError)
+      showError(getSupabaseErrorMessage(itemsError))
+      return
+    }
+
+    setMenu(buildWeekMenuFromItems((items as MenuItemRow[]) ?? []))
+  }, [homeId, weekStart, showError])
+
+  useEffect(() => {
+    async function init() {
+      setLoading(true)
+      setError(null)
+      const supabase = createClient()
+      if (!supabase) {
+        setError(CONFIG_ERROR)
+        setLoading(false)
+        return
+      }
+      try {
+        const [homesRes, dishesRes] = await Promise.all([
+          supabase.from("homes").select("*").is("archived_at", null).order("name"),
+          supabase
+            .from("dish_library")
+            .select("*")
+            .is("archived_at", null)
+            .order("name"),
+        ])
+        if (homesRes.error) throw homesRes.error
+        const list = (homesRes.data as Home[]) ?? []
+        setHomes(list)
+        setDishLibrary((dishesRes.data as DishLibraryItem[]) ?? [])
+        if (list[0] && !homeId) setHomeId(list[0].id)
+      } catch (err) {
+        logSupabaseError("menu init", err)
+        setError("Failed to load menu data.")
+        showError(getSupabaseErrorMessage(err))
+      } finally {
+        setLoading(false)
+      }
+    }
+    init()
+  }, [showError])
+
+  useEffect(() => {
+    if (homeId) loadMenu()
+  }, [homeId, weekOffset, loadMenu])
+
+  function dayMenu(i: number) {
+    return menu[i] ?? {}
+  }
+  function dayCount(i: number) {
+    return Object.values(dayMenu(i)).reduce((s, a) => s + a.length, 0)
+  }
+  const totalDishes = MENU_DAYS.reduce((s, _, i) => s + dayCount(i), 0)
+
+  async function resolveMenuId(): Promise<string | null> {
+    const supabase = createClient()
+    if (!supabase || !homeId) return null
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in.")
+      return null
+    }
+    if (menuId) return menuId
+    const { menuId: id, error } = await ensureWeeklyMenu(
+      supabase,
+      homeId,
+      weekStart,
+      userId,
+    )
+    if (error) {
+      logSupabaseError("ensure weekly menu", error)
+      showError(getSupabaseErrorMessage(error))
+      return null
+    }
+    setMenuId(id)
+    return id
+  }
+
+  async function addDish(
+    day: number,
+    cat: string,
+    dishName: string,
+    dishId?: string | null,
+  ) {
+    const existing = (dayMenu(day)[cat] ?? []).find((x) => x.dish === dishName)
+    if (existing) return
+
+    const supabase = createClient()
+    if (!supabase) return
+    const mid = await resolveMenuId()
+    if (!mid) return
+
+    const { data, error } = await supabase
+      .from("menu_items")
+      .insert({
+        menu_id: mid,
+        day_of_week: day,
+        category: cat,
+        dish_name: dishName,
+        dish_id: dishId ?? null,
+        portions: 2,
+        notes: "",
+      })
+      .select("*")
+      .single()
+
+    if (error) {
+      logSupabaseError("menu item insert", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+
+    const row = data as MenuItemRow
+    setMenu((prev) => {
+      const d = prev[day] ?? {}
+      const catItems = d[cat] ?? []
+      return {
+        ...prev,
+        [day]: {
+          ...d,
+          [cat]: [
+            ...catItems,
+            {
+              id: row.id,
+              dish: row.dish_name,
+              dish_id: row.dish_id,
+              portions: row.portions,
+              notes: row.notes ?? "",
+            },
+          ],
+        },
+      }
     })
   }
 
-  function removeDish(day: number, cat: string, dish: string) {
-    setMenus(prev => {
-      const wk = prev[weekKey] ?? {}
-      const d = wk[day] ?? {}
-      return { ...prev, [weekKey]: { ...wk, [day]: { ...d, [cat]: (d[cat] ?? []).filter(x => x.dish !== dish) } } }
-    })
+  async function removeDish(entryId: string, day: number, cat: string) {
+    const supabase = createClient()
+    if (!supabase) return
+    const { error } = await supabase.from("menu_items").delete().eq("id", entryId)
+    if (error) {
+      logSupabaseError("menu item delete", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setMenu((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [cat]: (prev[day]?.[cat] ?? []).filter((x) => x.id !== entryId),
+      },
+    }))
   }
 
-  function updateDish(day: number, cat: string, dish: string, field: "portions" | "notes", val: string | number) {
-    setMenus(prev => {
-      const wk = prev[weekKey] ?? {}
-      const d = wk[day] ?? {}
-      return { ...prev, [weekKey]: { ...wk, [day]: { ...d, [cat]: (d[cat] ?? []).map(x => x.dish === dish ? { ...x, [field]: val } : x) } } }
+  async function updateDish(
+    entryId: string,
+    field: "portions" | "notes",
+    val: string | number,
+  ) {
+    setMenu((prev) => {
+      const next = { ...prev }
+      for (const day of Object.keys(next)) {
+        const d = Number(day)
+        for (const cat of Object.keys(next[d] ?? {})) {
+          next[d][cat] = (next[d][cat] ?? []).map((x) =>
+            x.id === entryId ? { ...x, [field]: val } : x,
+          )
+        }
+      }
+      return next
     })
+
+    const supabase = createClient()
+    if (!supabase) return
+    const { error } = await supabase
+      .from("menu_items")
+      .update({ [field]: val })
+      .eq("id", entryId)
+    if (error) {
+      logSupabaseError("menu item update", error)
+      showError(getSupabaseErrorMessage(error))
+      await loadMenu()
+    }
   }
 
-  function confirmMenu() {
-    setConfirmed(prev => ({ ...prev, [weekKey]: true }))
-    setToast(true)
-    setTimeout(() => setToast(false), 4000)
+  async function confirmMenu() {
+    const supabase = createClient()
+    if (!supabase) return
+    const mid = await resolveMenuId()
+    if (!mid) return
+    const { error } = await supabase
+      .from("weekly_menus")
+      .update({ status: "confirmed", updated_at: new Date().toISOString() })
+      .eq("id", mid)
+    if (error) {
+      logSupabaseError("menu confirm", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setIsConfirmed(true)
+    showSuccess(`Menu confirmed for ${home?.name ?? "residence"}`)
     setView("confirmed")
   }
 
-  // DISH PICKER
-  if (view === "picker") {
-    const available = DISH_LIBRARY[selectedCat] ?? []
-    const selDishes = (dayMenu(selectedDay)[selectedCat] ?? []).map(d => d.dish)
+  if (loading) {
     return (
       <AppShell>
-        <button onClick={() => setView("day")} className="flex items-center gap-1.5 text-sm font-bold text-blue-600 mb-4">
+        <div className="space-y-3 py-8">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-20 animate-pulse rounded-[22px] bg-slate-200" />
+          ))}
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (error || !home) {
+    return (
+      <AppShell>
+        {error && <ErrorBanner message={error} />}
+        {!home && !error && (
+          <p className="text-center text-sm text-slate-400 py-8">
+            Add a residence first to plan weekly menus.
+          </p>
+        )}
+      </AppShell>
+    )
+  }
+
+  if (view === "picker") {
+    const available = dishLibrary.filter((d) => d.category === selectedCat)
+    const selDishes = (dayMenu(selectedDay)[selectedCat] ?? []).map((d) => d.dish)
+    return (
+      <AppShell>
+        <button
+          onClick={() => setView("day")}
+          className="mb-4 flex items-center gap-1.5 text-sm font-bold text-blue-600"
+        >
           <ChevronLeft size={16} /> Back
         </button>
-        <PageHeader title={selectedCat} subtitle={`${DAYS[selectedDay]} · ${home.name}`} />
+        <PageHeader
+          title={selectedCat}
+          subtitle={`${MENU_DAYS[selectedDay]} · ${home.name}`}
+        />
         <div className="space-y-2">
-          {available.map(dish => {
-            const on = selDishes.includes(dish)
-            return (
-              <button key={dish} onClick={() => on ? removeDish(selectedDay, selectedCat, dish) : addDish(selectedDay, selectedCat, dish)}
-                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl border text-left transition-all ${on ? "border-blue-600 bg-blue-50 border-2" : "border-[#E6EEF8] bg-white"}`}>
-                <span className={`text-sm font-semibold ${on ? "text-blue-600" : "text-slate-700"}`}>{dish}</span>
-                {on && <span className="text-xs font-bold text-blue-600">Selected</span>}
-              </button>
-            )
-          })}
+          {available.length === 0 ? (
+            <p className="text-sm text-slate-400 py-4 text-center">
+              No dishes in this category. Add recipes in Dish Library.
+            </p>
+          ) : (
+            available.map((dish) => {
+              const on = selDishes.includes(dish.name)
+              return (
+                <button
+                  key={dish.id}
+                  onClick={() =>
+                    on
+                      ? removeDish(
+                          (dayMenu(selectedDay)[selectedCat] ?? []).find(
+                            (x) => x.dish === dish.name,
+                          )!.id,
+                          selectedDay,
+                          selectedCat,
+                        )
+                      : addDish(selectedDay, selectedCat, dish.name, dish.id)
+                  }
+                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left transition-all ${
+                    on
+                      ? "border-2 border-blue-600 bg-blue-50"
+                      : "border-[#E6EEF8] bg-white"
+                  }`}
+                >
+                  <span
+                    className={`text-sm font-semibold ${on ? "text-blue-600" : "text-slate-700"}`}
+                  >
+                    {dish.name}
+                  </span>
+                  {on && <span className="text-xs font-bold text-blue-600">Selected</span>}
+                </button>
+              )
+            })
+          )}
         </div>
-        <button onClick={() => setView("day")} className="mt-6 w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30">
+        <button
+          onClick={() => setView("day")}
+          className="mt-6 w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+        >
           Done — {selDishes.length} selected
         </button>
       </AppShell>
     )
   }
 
-  // DAY VIEW
   if (view === "day") {
     const dm = dayMenu(selectedDay)
     return (
       <AppShell>
-        <button onClick={() => setView("week")} className="flex items-center gap-1.5 text-sm font-bold text-blue-600 mb-4">
+        <button
+          onClick={() => setView("week")}
+          className="mb-4 flex items-center gap-1.5 text-sm font-bold text-blue-600"
+        >
           <ChevronLeft size={16} /> Week View
         </button>
-        <PageHeader title={DAYS[selectedDay]} subtitle={`${fmt(dates[selectedDay])} · ${home.name}`} />
-        {CATEGORIES.map(cat => {
+        <PageHeader
+          title={MENU_DAYS[selectedDay]}
+          subtitle={`${formatMenuDate(dates[selectedDay])} · ${home.name}`}
+        />
+        {MENU_CATEGORIES.map((cat) => {
           const dishes = dm[cat] ?? []
           return (
             <div key={cat} className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">{cat}</h3>
-                <button onClick={() => { setSelectedCat(cat); setView("picker") }} className="text-xs font-bold text-blue-600">+ Add</button>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-400">
+                  {cat}
+                </h3>
+                <button
+                  onClick={() => {
+                    setSelectedCat(cat)
+                    setView("picker")
+                  }}
+                  className="text-xs font-bold text-blue-600"
+                >
+                  + Add
+                </button>
               </div>
               {dishes.length === 0 ? (
-                <button onClick={() => { setSelectedCat(cat); setView("picker") }}
-                  className="w-full px-4 py-3.5 rounded-2xl border border-dashed border-[#E6EEF8] bg-slate-50 text-sm text-slate-400 text-left">
+                <button
+                  onClick={() => {
+                    setSelectedCat(cat)
+                    setView("picker")
+                  }}
+                  className="w-full rounded-2xl border border-dashed border-[#E6EEF8] bg-slate-50 px-4 py-3.5 text-left text-sm text-slate-400"
+                >
                   No {cat.toLowerCase()} — tap to add
                 </button>
               ) : (
-                dishes.map(({ dish, portions, notes }) => (
-                  <div key={dish} className="mb-3 rounded-[20px] border border-[#E6EEF8] bg-white p-4 shadow-sm">
+                dishes.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="mb-3 rounded-[20px] border border-[#E6EEF8] bg-white p-4 shadow-sm"
+                  >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 pr-3">
-                        <p className="text-sm font-bold text-slate-900 mb-3">{dish}</p>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Portions</p>
-                        <div className="flex gap-1.5 flex-wrap mb-3">
-                          {PORTIONS.map(p => (
-                            <button key={p} onClick={() => updateDish(selectedDay, cat, dish, "portions", p)}
-                              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${portions === p ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+                        <p className="mb-3 text-sm font-bold text-slate-900">{entry.dish}</p>
+                        <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                          Portions
+                        </p>
+                        <div className="mb-3 flex flex-wrap gap-1.5">
+                          {PORTIONS.map((p) => (
+                            <button
+                              key={p}
+                              onClick={() => updateDish(entry.id, "portions", p)}
+                              className={`h-8 w-8 rounded-lg text-xs font-bold transition-all ${
+                                entry.portions === p
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
                               {p}
                             </button>
                           ))}
                         </div>
-                        <input value={notes} onChange={e => updateDish(selectedDay, cat, dish, "notes", e.target.value)}
+                        <input
+                          value={entry.notes}
+                          onChange={(e) =>
+                            updateDish(entry.id, "notes", e.target.value)
+                          }
                           placeholder="Notes — dietary restrictions, guests..."
-                          className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                          className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        />
                       </div>
-                      <button onClick={() => removeDish(selectedDay, cat, dish)}
-                        className="w-7 h-7 rounded-full bg-red-50 text-red-500 flex items-center justify-center flex-shrink-0">
+                      <button
+                        onClick={() => removeDish(entry.id, selectedDay, cat)}
+                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500"
+                      >
                         <X size={13} />
                       </button>
                     </div>
@@ -191,41 +467,52 @@ export default function MenuPage() {
     )
   }
 
-  // CONFIRMED VIEW
   if (view === "confirmed") {
     return (
       <AppShell>
-        <div className="text-center py-8">
-          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+        <div className="py-8 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
             <Check size={28} className="text-green-600" />
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900 mb-1">Menu Confirmed</h2>
-          <p className="text-sm text-slate-500">{home.name} · {fmt(dates[0])} — {fmt(dates[6])}</p>
-          <p className="text-xs text-slate-400 mt-1">{totalDishes} dishes · team notified</p>
+          <h2 className="mb-1 text-xl font-extrabold text-slate-900">Menu Confirmed</h2>
+          <p className="text-sm text-slate-500">
+            {home.name} · {formatMenuDate(dates[0])} — {formatMenuDate(dates[6])}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">{totalDishes} dishes saved</p>
         </div>
-        {DAYS.map((day, i) => {
+        {MENU_DAYS.map((day, i) => {
           const dm = dayMenu(i)
           if (dayCount(i) === 0) return null
           return (
-            <div key={day} className="mb-3 rounded-[20px] border border-[#E6EEF8] bg-white p-4 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
+            <div
+              key={day}
+              className="mb-3 rounded-[20px] border border-[#E6EEF8] bg-white p-4 shadow-sm"
+            >
+              <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-extrabold text-slate-900">{day}</h3>
-                <span className="text-xs text-slate-400">{fmt(dates[i])}</span>
+                <span className="text-xs text-slate-400">{formatMenuDate(dates[i])}</span>
               </div>
-              {CATEGORIES.map(cat => {
+              {MENU_CATEGORIES.map((cat) => {
                 const dishes = dm[cat] ?? []
                 if (!dishes.length) return null
                 return (
                   <div key={cat} className="mb-3">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">{cat}</p>
-                    {dishes.map(({ dish, portions, notes }) => (
-                      <div key={dish} className="flex justify-between items-start mb-1.5">
+                    <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">
+                      {cat}
+                    </p>
+                    {dishes.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="mb-1.5 flex items-start justify-between"
+                      >
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">{dish}</p>
-                          {notes && <p className="text-xs text-slate-400 mt-0.5">{notes}</p>}
+                          <p className="text-sm font-semibold text-slate-800">{entry.dish}</p>
+                          {entry.notes && (
+                            <p className="mt-0.5 text-xs text-slate-400">{entry.notes}</p>
+                          )}
                         </div>
-                        <span className="text-xs font-bold text-blue-600 bg-blue-50 rounded-full px-2 py-0.5 ml-3 flex-shrink-0">
-                          {portions} portions
+                        <span className="ml-3 flex-shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-600">
+                          {entry.portions} portions
                         </span>
                       </div>
                     ))}
@@ -235,83 +522,123 @@ export default function MenuPage() {
             </div>
           )
         })}
-        <button onClick={() => setView("week")} className="w-full mt-4 rounded-2xl border border-[#E6EEF8] bg-white py-3.5 text-sm font-bold text-slate-500">
+        <button
+          onClick={() => setView("week")}
+          className="mt-4 w-full rounded-2xl border border-[#E6EEF8] bg-white py-3.5 text-sm font-bold text-slate-500"
+        >
           Back to Week View
         </button>
       </AppShell>
     )
   }
 
-  // WEEK VIEW
   return (
     <AppShell>
-      {toast && (
-        <div className="fixed top-4 left-4 right-4 z-50 max-w-md mx-auto bg-[#0F2A55] text-white rounded-2xl px-4 py-3.5 text-sm font-semibold shadow-2xl">
-          Menu confirmed and logged for {home.name}
-        </div>
-      )}
-
-      {/* HERO */}
-      <div className="-mx-4 -mt-4 mb-6 rounded-b-[28px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] px-5 pt-6 pb-6 text-white shadow-xl shadow-blue-500/20">
-        <p className="text-xs font-bold opacity-60 uppercase tracking-widest mb-1">Weekly Menu</p>
-        <h1 className="text-2xl font-extrabold mb-1">{home.name}</h1>
-        <p className="text-sm opacity-70 mb-4">{fmt(dates[0])} — {fmt(dates[6])}</p>
+      <div className="-mx-4 -mt-4 mb-6 rounded-b-[28px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] px-5 pb-6 pt-6 text-white shadow-xl shadow-blue-500/20">
+        <p className="mb-1 text-xs font-bold uppercase tracking-widest opacity-60">
+          Weekly Menu
+        </p>
+        <h1 className="mb-1 text-2xl font-extrabold">{home.name}</h1>
+        <p className="mb-4 text-sm opacity-70">
+          {formatMenuDate(dates[0])} — {formatMenuDate(dates[6])}
+        </p>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {mockHomes.map(h => (
-            <button key={h.id} onClick={() => setHomeId(h.id)}
-              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${homeId === h.id ? "bg-white text-[#0F2A55]" : "bg-white/10 text-white border border-white/25"}`}>
+          {homes.map((h) => (
+            <button
+              key={h.id}
+              onClick={() => setHomeId(h.id)}
+              className={`flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+                homeId === h.id
+                  ? "bg-white text-[#0F2A55]"
+                  : "border border-white/25 bg-white/10 text-white"
+              }`}
+            >
               {h.name}
             </button>
           ))}
         </div>
       </div>
 
-      {/* WEEK NAV */}
-      <div className="flex items-center justify-between mb-5 rounded-2xl border border-[#E6EEF8] bg-white px-4 py-3 shadow-sm">
-        <button onClick={() => setWeekOffset(w => w - 1)} className="text-slate-400 p-1"><ChevronLeft size={20} /></button>
+      <div className="mb-5 flex items-center justify-between rounded-2xl border border-[#E6EEF8] bg-white px-4 py-3 shadow-sm">
+        <button onClick={() => setWeekOffset((w) => w - 1)} className="p-1 text-slate-400">
+          <ChevronLeft size={20} />
+        </button>
         <div className="text-center">
           <p className="text-sm font-bold text-slate-900">{weekLabel(weekOffset)}</p>
-          <p className="text-xs text-slate-400 mt-0.5">{fmt(dates[0])} — {fmt(dates[6])}</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {formatMenuDate(dates[0])} — {formatMenuDate(dates[6])}
+          </p>
         </div>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="text-slate-400 p-1"><ChevronRight size={20} /></button>
+        <button onClick={() => setWeekOffset((w) => w + 1)} className="p-1 text-slate-400">
+          <ChevronRight size={20} />
+        </button>
       </div>
 
-      {/* DAY GRID */}
-      <div className="grid grid-cols-7 gap-1.5 mb-5">
-        {DAYS.map((_, i) => {
+      <div className="mb-5 grid grid-cols-7 gap-1.5">
+        {MENU_DAYS.map((_, i) => {
           const count = dayCount(i)
           return (
-            <button key={i} onClick={() => { setSelectedDay(i); setView("day") }}
-              className={`flex flex-col items-center gap-1 py-2.5 rounded-2xl border transition-all ${count > 0 ? "border-blue-600 bg-blue-50 border-2" : "border-[#E6EEF8] bg-white"}`}>
-              <span className={`text-[9px] font-bold uppercase tracking-wide ${count > 0 ? "text-blue-600" : "text-slate-400"}`}>{SHORT_DAYS[i]}</span>
-              <span className="text-xs font-extrabold text-slate-800">{fmt(dates[i]).split(" ")[1]}</span>
-              {count > 0
-                ? <span className="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-extrabold flex items-center justify-center">{count}</span>
-                : <span className="w-5 h-5 rounded-full bg-slate-100" />
-              }
+            <button
+              key={i}
+              onClick={() => {
+                setSelectedDay(i)
+                setView("day")
+              }}
+              className={`flex flex-col items-center gap-1 rounded-2xl border py-2.5 transition-all ${
+                count > 0
+                  ? "border-2 border-blue-600 bg-blue-50"
+                  : "border-[#E6EEF8] bg-white"
+              }`}
+            >
+              <span
+                className={`text-[9px] font-bold uppercase tracking-wide ${
+                  count > 0 ? "text-blue-600" : "text-slate-400"
+                }`}
+              >
+                {MENU_SHORT_DAYS[i]}
+              </span>
+              <span className="text-xs font-extrabold text-slate-800">
+                {formatMenuDate(dates[i]).split(" ")[1]}
+              </span>
+              {count > 0 ? (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-extrabold text-white">
+                  {count}
+                </span>
+              ) : (
+                <span className="h-5 w-5 rounded-full bg-slate-100" />
+              )}
             </button>
           )
         })}
       </div>
 
-      {/* DAY SUMMARIES */}
-      {DAYS.map((day, i) => {
+      {MENU_DAYS.map((day, i) => {
         const dm = dayMenu(i)
         if (dayCount(i) === 0) return null
         return (
-          <button key={day} onClick={() => { setSelectedDay(i); setView("day") }}
-            className="w-full mb-3 rounded-[20px] border border-[#E6EEF8] bg-white p-4 shadow-sm text-left">
-            <div className="flex justify-between items-center mb-2">
+          <button
+            key={day}
+            onClick={() => {
+              setSelectedDay(i)
+              setView("day")
+            }}
+            className="mb-3 w-full rounded-[20px] border border-[#E6EEF8] bg-white p-4 text-left shadow-sm"
+          >
+            <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-extrabold text-slate-900">{day}</p>
-              <span className="text-xs text-slate-400">{fmt(dates[i])}</span>
+              <span className="text-xs text-slate-400">{formatMenuDate(dates[i])}</span>
             </div>
-            {CATEGORIES.map(cat => {
+            {MENU_CATEGORIES.map((cat) => {
               const dishes = dm[cat] ?? []
               if (!dishes.length) return null
               return (
                 <div key={cat} className="mb-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1.5">{cat}</span>
-                  <span className="text-xs text-slate-600">{dishes.map(d => d.dish).join(", ")}</span>
+                  <span className="mr-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    {cat}
+                  </span>
+                  <span className="text-xs text-slate-600">
+                    {dishes.map((d) => d.dish).join(", ")}
+                  </span>
                 </div>
               )
             })}
@@ -321,23 +648,33 @@ export default function MenuPage() {
 
       {totalDishes === 0 && (
         <div className="rounded-[20px] border border-dashed border-[#E6EEF8] bg-white p-8 text-center">
-          <p className="text-sm font-bold text-slate-500 mb-1">No menu planned yet</p>
-          <p className="text-xs text-slate-400">Tap any day to start building the menu for {home.name}</p>
+          <p className="mb-1 text-sm font-bold text-slate-500">No menu planned yet</p>
+          <p className="text-xs text-slate-400">
+            Tap any day to start building the menu for {home.name}
+          </p>
         </div>
       )}
 
       {totalDishes > 0 && !isConfirmed && (
         <div className="mt-4">
-          <button onClick={confirmMenu} className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30">
+          <button
+            onClick={confirmMenu}
+            className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+          >
             Confirm Menu — {totalDishes} dishes
           </button>
-          <p className="text-xs text-slate-400 text-center mt-2">Logs the menu for {home.name} and notifies the team</p>
+          <p className="mt-2 text-center text-xs text-slate-400">
+            Saves the menu for {home.name}
+          </p>
         </div>
       )}
 
       {isConfirmed && (
         <div className="mt-4">
-          <button onClick={() => setView("confirmed")} className="w-full rounded-2xl bg-green-100 py-4 text-sm font-extrabold text-green-700">
+          <button
+            onClick={() => setView("confirmed")}
+            className="w-full rounded-2xl bg-green-100 py-4 text-sm font-extrabold text-green-700"
+          >
             Menu Confirmed — View Summary
           </button>
         </div>

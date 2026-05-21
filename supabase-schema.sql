@@ -312,6 +312,20 @@ create policy "Insert menu items" on menu_items
       where wm.id = menu_items.menu_id and is_home_member(wm.home_id)
     )
   );
+create policy "Update menu items" on menu_items
+  for update using (
+    exists (
+      select 1 from weekly_menus wm
+      where wm.id = menu_items.menu_id and is_home_member(wm.home_id)
+    )
+  );
+create policy "Delete menu items" on menu_items
+  for delete using (
+    exists (
+      select 1 from weekly_menus wm
+      where wm.id = menu_items.menu_id and is_home_member(wm.home_id)
+    )
+  );
 
 -- Barcode scans
 create policy "Users view own scans" on barcode_scans

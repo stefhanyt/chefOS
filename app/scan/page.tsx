@@ -6,13 +6,16 @@ import AppShell from "@/components/AppShell"
 import { ChevronLeft, Check, Loader2, AlertCircle, Image } from "lucide-react"
 import { lookupBarcode, parseProductName } from "@/lib/openfoodfacts"
 import { createClient } from "@/lib/supabase/client"
-import { mockHomes } from "@/lib/mock-data"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { useToast } from "@/components/ToastProvider"
 import type { Home } from "@/lib/types"
 
 type ScanState = "scanning" | "looking_up" | "found" | "manual" | "saved"
 type ErrorKind = "none" | "permission" | "camera" | "lookup"
 
 export default function ScanPage() {
+  const { showSuccess, showError } = useToast()
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const didScanRef = useRef(false)
@@ -38,17 +41,18 @@ export default function ScanPage() {
 
   async function loadHomes() {
     const supabase = createClient()
-    if (!supabase) {
-      setHomes(mockHomes)
-      setHomeId(mockHomes[0]?.id ?? "")
-      return
-    }
-    const { data } = await supabase
+    if (!supabase) return
+    const { data, error } = await supabase
       .from("homes")
       .select("id, name")
       .is("archived_at", null)
       .order("name")
-    const list = (data as Home[]) ?? mockHomes
+    if (error) {
+      logSupabaseError("scan homes load", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    const list = (data as Home[]) ?? []
     setHomes(list)
     setHomeId(list[0]?.id ?? "")
   }
@@ -135,20 +139,53 @@ export default function ScanPage() {
   }
 
   async function handleSave() {
-    const supabase = createClient()
-    if (supabase && productName.trim()) {
-      await supabase.from("pantry_items").insert({
-        name: productName.trim(),
-        quantity: Number(quantity) || 0,
-        unit: unit.trim(),
-        storage_location: location.trim(),
-        category: "Other",
-        minimum_quantity: 0,
-        status: "OK",
-        home_id: homeId || undefined,
-      })
+    if (!productName.trim() || !homeId) {
+      showError("Product name and residence are required.")
+      return
     }
+    const supabase = createClient()
+    if (!supabase) {
+      showError("Database not configured.")
+      return
+    }
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in.")
+      return
+    }
+
+    const { error: pantryError } = await supabase.from("pantry_items").insert({
+      name: productName.trim(),
+      quantity: Number(quantity) || 0,
+      unit: unit.trim(),
+      storage_location: location.trim(),
+      category: "Other",
+      minimum_quantity: 0,
+      status: "OK",
+      home_id: homeId,
+      barcode: barcode || null,
+      created_by: userId,
+    })
+
+    if (pantryError) {
+      logSupabaseError("scan pantry insert", pantryError)
+      showError(getSupabaseErrorMessage(pantryError))
+      return
+    }
+
+    await supabase.from("barcode_scans").insert({
+      home_id: homeId,
+      user_id: userId,
+      barcode: barcode || null,
+      product_name: productName.trim(),
+      quantity: Number(quantity) || 0,
+      unit: unit.trim(),
+      storage_location: location.trim(),
+      scan_mode: "single",
+    })
+
     setScanState("saved")
+    showSuccess("Item saved to pantry")
   }
 
   return (
@@ -162,6 +199,12 @@ export default function ScanPage() {
           Back
         </Link>
         <h1 className="text-xl font-extrabold text-slate-900">Scan Item</h1>
+        <Link
+          href="/scan/history"
+          className="ml-auto text-xs font-bold text-blue-600"
+        >
+          History
+        </Link>
       </div>
 
       {errorKind !== "none" && (

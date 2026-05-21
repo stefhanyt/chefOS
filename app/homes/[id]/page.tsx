@@ -1,18 +1,17 @@
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { use, useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import StatusBadge, { pantryStatusType, mealStatusType } from "@/components/StatusBadge"
-import {
-  mockHomes,
-  mockPantryItems,
-  mockShoppingItems,
-  mockMeals,
-  mockHomeMembers,
-} from "@/lib/mock-data"
+import SheetModal from "@/components/SheetModal"
+import FormField from "@/components/FormField"
+import ModalSubmitFooter from "@/components/ModalSubmitFooter"
 import { createClient } from "@/lib/supabase/client"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { useToast } from "@/components/ToastProvider"
+import { CONFIG_ERROR } from "@/lib/constants"
 import type {
   Home,
   PantryItem,
@@ -27,6 +26,7 @@ import {
   Package,
   ShoppingCart,
   UtensilsCrossed,
+  Pencil,
 } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 
@@ -36,8 +36,10 @@ export default function HomeDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = use(params)
+  const { showSuccess, showError } = useToast()
 
   const [home, setHome] = useState<Home | null>(null)
+  const [showEdit, setShowEdit] = useState(false)
   const [alerts, setAlerts] = useState<PantryItem[]>([])
   const [shopping, setShopping] = useState<ShoppingItem[]>([])
   const [meals, setMeals] = useState<PreparedMeal[]>([])
@@ -53,17 +55,7 @@ export default function HomeDetailPage({
       setError(null)
       const supabase = createClient()
       if (!supabase) {
-        const h = mockHomes.find((h) => h.id === id)
-        if (!h) { setNotFoundFlag(true); setLoading(false); return }
-        setHome(h)
-        setAlerts(
-          mockPantryItems.filter(
-            (i) => i.home_id === id && (i.status === "Critical" || i.status === "Out of Stock")
-          )
-        )
-        setShopping(mockShoppingItems.filter((i) => i.home_id === id && i.status === "Open"))
-        setMeals(mockMeals.filter((m) => m.home_id === id))
-        setMembers(mockHomeMembers.filter((m) => m.home_id === id))
+        setError(CONFIG_ERROR)
         setLoading(false)
         return
       }
@@ -107,14 +99,51 @@ export default function HomeDetailPage({
         setShopping((shoppingRes.data as ShoppingItem[]) ?? [])
         setMeals((mealsRes.data as PreparedMeal[]) ?? [])
         setMembers((membersRes.data as HomeMember[]) ?? [])
-      } catch {
+      } catch (err) {
+        logSupabaseError("home detail load", err)
         setError("Failed to load residence. Check your connection and try again.")
+        showError(getSupabaseErrorMessage(err))
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [id, retryCount])
+  }, [id, retryCount, showError])
+
+  async function handleSaveHome(form: {
+    name: string
+    location: string
+    notes: string
+    kitchen_equipment: string
+    preferences: string
+  }) {
+    const supabase = createClient()
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
+    const { data, error } = await supabase
+      .from("homes")
+      .update({
+        name: form.name,
+        location: form.location,
+        notes: form.notes,
+        kitchen_equipment: form.kitchen_equipment,
+        preferences: form.preferences,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .select("*")
+      .single()
+    if (error) {
+      logSupabaseError("home detail update", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    if (data) setHome(data as Home)
+    setShowEdit(false)
+    showSuccess("Residence updated")
+  }
 
   if (notFoundFlag) notFound()
 
@@ -142,8 +171,16 @@ export default function HomeDetailPage({
       ) : (
         <>
           {/* HOME HEADER */}
-          <div className="mb-6 rounded-[26px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] p-6 text-white shadow-2xl shadow-blue-500/20">
-            <h1 className="text-2xl font-extrabold">{home.name}</h1>
+          <div className="relative mb-6 rounded-[26px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] p-6 text-white shadow-2xl shadow-blue-500/20">
+            <button
+              type="button"
+              onClick={() => setShowEdit(true)}
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white"
+              aria-label="Edit residence"
+            >
+              <Pencil size={16} />
+            </button>
+            <h1 className="text-2xl font-extrabold pr-12">{home.name}</h1>
             <div className="mt-1 flex items-center gap-1.5 text-sm text-blue-200">
               <MapPin size={13} />
               {home.location}
@@ -311,9 +348,85 @@ export default function HomeDetailPage({
               ))
             )}
           </Section>
+          {showEdit && home && (
+            <HomeEditModal home={home} onClose={() => setShowEdit(false)} onSave={handleSaveHome} />
+          )}
         </>
       )}
     </AppShell>
+  )
+}
+
+function HomeEditModal({
+  home,
+  onClose,
+  onSave,
+}: {
+  home: Home
+  onClose: () => void
+  onSave: (form: {
+    name: string
+    location: string
+    notes: string
+    kitchen_equipment: string
+    preferences: string
+  }) => void | Promise<void>
+}) {
+  const formId = "home-detail-form"
+  const [name, setName] = useState(home.name)
+  const [location, setLocation] = useState(home.location)
+  const [notes, setNotes] = useState(home.notes ?? "")
+  const [kitchen, setKitchen] = useState(home.kitchen_equipment ?? "")
+  const [preferences, setPreferences] = useState(home.preferences ?? "")
+  const [saving, setSaving] = useState(false)
+
+  const validation = useMemo(() => {
+    const missing: string[] = []
+    if (!name.trim()) missing.push("name")
+    if (!location.trim()) missing.push("location")
+    return { canSubmit: missing.length === 0 && !saving, missing }
+  }, [name, location, saving])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validation.canSubmit) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(),
+        location: location.trim(),
+        notes: notes.trim(),
+        kitchen_equipment: kitchen.trim(),
+        preferences: preferences.trim(),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <SheetModal
+      open
+      onClose={onClose}
+      title="Edit Residence"
+      footer={
+        <ModalSubmitFooter
+          formId={formId}
+          label="Save Changes"
+          saving={saving}
+          disabled={!validation.canSubmit}
+          missing={validation.missing}
+        />
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        <FormField label="Name" value={name} onChange={setName} required />
+        <FormField label="Location" value={location} onChange={setLocation} required />
+        <FormField label="Notes" value={notes} onChange={setNotes} />
+        <FormField label="Kitchen Equipment" value={kitchen} onChange={setKitchen} />
+        <FormField label="Client Preferences" value={preferences} onChange={setPreferences} />
+      </form>
+    </SheetModal>
   )
 }
 

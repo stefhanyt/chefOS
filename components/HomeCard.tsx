@@ -1,25 +1,37 @@
 import Link from "next/link"
 import type { Home } from "@/lib/types"
 import StatusBadge from "./StatusBadge"
-import { MapPin, Users, ShoppingCart, AlertTriangle, UtensilsCrossed } from "lucide-react"
+import { MapPin, Users, ShoppingCart, AlertTriangle, UtensilsCrossed, Pencil } from "lucide-react"
 
 interface Props {
   home: Home
+  onEdit?: (home: Home) => void
 }
 
-export default function HomeCard({ home }: Props) {
+export default function HomeCard({ home, onEdit }: Props) {
   const hasAlerts =
     (home.pantry_alert_count ?? 0) > 0 || (home.expiring_meal_count ?? 0) > 0
 
   return (
-    <Link href={`/homes/${home.id}`}>
-      <div
-        className="
-          mb-4 rounded-[26px] border border-[#E6EEF8]
-          bg-white p-5 shadow-lg shadow-slate-900/5
-          active:scale-[0.98] transition-transform
-        "
-      >
+    <div className="relative mb-4">
+      {onEdit && (
+        <button
+          type="button"
+          onClick={() => onEdit(home)}
+          className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm"
+          aria-label="Edit residence"
+        >
+          <Pencil size={15} />
+        </button>
+      )}
+      <Link href={`/homes/${home.id}`}>
+        <div
+          className="
+            rounded-[26px] border border-[#E6EEF8]
+            bg-white p-5 shadow-lg shadow-slate-900/5
+            active:scale-[0.98] transition-transform
+          "
+        >
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-base font-extrabold text-slate-900">
@@ -61,8 +73,9 @@ export default function HomeCard({ home }: Props) {
             {home.expiring_meal_count} meal{home.expiring_meal_count !== 1 ? "s" : ""} expiring soon
           </div>
         )}
-      </div>
-    </Link>
+        </div>
+      </Link>
+    </div>
   )
 }
 

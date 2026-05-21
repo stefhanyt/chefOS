@@ -4,19 +4,27 @@ import { useState, useEffect } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import SearchAndFilterBar from "@/components/SearchAndFilterBar"
-import { mockDishLibrary } from "@/lib/mock-data"
 import { createClient } from "@/lib/supabase/client"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { useToast } from "@/components/ToastProvider"
 import type { DishLibraryItem } from "@/lib/types"
-import { Plus, X, Clock, BookOpen } from "lucide-react"
+import { Plus, Clock, BookOpen, Trash2 } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import SheetModal from "@/components/SheetModal"
+import FormField from "@/components/FormField"
+import ModalSubmitFooter from "@/components/ModalSubmitFooter"
+import { CONFIG_ERROR } from "@/lib/constants"
 
 export default function DishLibraryPage() {
+  const { showSuccess, showError } = useToast()
   const [dishes, setDishes] = useState<DishLibraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [search, setSearch] = useState("")
   const [showModal, setShowModal] = useState(false)
+  const [editingDish, setEditingDish] = useState<DishLibraryItem | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -24,7 +32,7 @@ export default function DishLibraryPage() {
       setError(null)
       const supabase = createClient()
       if (!supabase) {
-        setDishes(mockDishLibrary)
+        setError(CONFIG_ERROR)
         setLoading(false)
         return
       }
@@ -36,52 +44,87 @@ export default function DishLibraryPage() {
           .order("name")
         if (dbError) throw dbError
         setDishes((data as DishLibraryItem[]) ?? [])
-      } catch {
+      } catch (err) {
+        logSupabaseError("dish library load", err)
         setError("Failed to load dish library. Check your connection and try again.")
+        showError(getSupabaseErrorMessage(err))
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [retryCount])
+  }, [retryCount, showError])
 
   const filtered = dishes.filter(
     (d) =>
       d.name.toLowerCase().includes(search.toLowerCase()) ||
       d.category.toLowerCase().includes(search.toLowerCase()) ||
-      d.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+      d.tags.some((t) => t.toLowerCase().includes(search.toLowerCase())),
   )
 
-  async function handleAddDish(form: {
-    name: string
-    category: string
-    ingredients: string
-    prep_time: string
-    storage_instructions: string
-    reheating_instructions: string
-    tags: string[]
-  }) {
+  async function handleAddDish(form: DishFormInput) {
     const supabase = createClient()
     if (!supabase) {
-      const newDish: DishLibraryItem = {
-        id: crypto.randomUUID(),
-        created_by: "local",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        notes: "",
-        ...form,
-      }
-      setDishes((prev) => [newDish, ...prev])
-      setShowModal(false)
+      showError(CONFIG_ERROR)
+      return
+    }
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in to add dishes.")
       return
     }
     const { data, error } = await supabase
       .from("dish_library")
-      .insert(form)
+      .insert({ ...form, created_by: userId })
       .select("*")
       .single()
-    if (!error && data) setDishes((prev) => [data as DishLibraryItem, ...prev])
+    if (error) {
+      logSupabaseError("dish insert", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    if (data) setDishes((prev) => [data as DishLibraryItem, ...prev])
     setShowModal(false)
+    showSuccess("Dish added to library")
+  }
+
+  async function handleUpdateDish(id: string, form: DishFormInput) {
+    const supabase = createClient()
+    if (!supabase) return
+    const { data, error } = await supabase
+      .from("dish_library")
+      .update({ ...form, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select("*")
+      .single()
+    if (error) {
+      logSupabaseError("dish update", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    if (data) {
+      setDishes((prev) =>
+        prev.map((d) => (d.id === id ? (data as DishLibraryItem) : d)),
+      )
+    }
+    setEditingDish(null)
+    showSuccess("Dish updated")
+  }
+
+  async function handleArchiveDish(id: string) {
+    const supabase = createClient()
+    if (!supabase) return
+    const { error } = await supabase
+      .from("dish_library")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", id)
+    if (error) {
+      logSupabaseError("dish archive", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setDishes((prev) => prev.filter((d) => d.id !== id))
+    showSuccess("Dish removed from library")
   }
 
   return (
@@ -156,127 +199,132 @@ export default function DishLibraryPage() {
               ))}
             </div>
 
-            {dish.notes && (
-              <p className="mt-3 text-xs italic text-slate-400">{dish.notes}</p>
-            )}
-
             <div className="mt-4 flex gap-2">
-              <button className="flex-1 rounded-2xl border border-[#E6EEF8] py-2.5 text-xs font-bold text-slate-600">
+              <button
+                onClick={() => setEditingDish(dish)}
+                className="flex-1 rounded-2xl border border-[#E6EEF8] py-2.5 text-xs font-bold text-slate-600"
+              >
                 Edit
               </button>
-              <button className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-blue-600 py-2.5 text-xs font-extrabold text-white">
-                <BookOpen size={13} />
-                Use to Log Meal
+              <button
+                onClick={() => handleArchiveDish(dish.id)}
+                className="flex items-center justify-center rounded-2xl border border-red-100 px-3 py-2.5 text-red-500"
+                aria-label="Remove dish"
+              >
+                <Trash2 size={14} />
               </button>
+              <a
+                href={`/meals`}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-blue-600 py-2.5 text-xs font-extrabold text-white"
+              >
+                <BookOpen size={13} />
+                Log Meal
+              </a>
             </div>
           </div>
         ))
       )}
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-[32px] bg-white px-6 pb-10 pt-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-slate-900">New Dish</h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <NewDishForm onSave={handleAddDish} onClose={() => setShowModal(false)} />
-          </div>
-        </div>
+        <DishFormModal title="New Dish" onClose={() => setShowModal(false)} onSave={handleAddDish} />
+      )}
+
+      {editingDish && (
+        <DishFormModal
+          title="Edit Dish"
+          onClose={() => setEditingDish(null)}
+          initial={editingDish}
+          onSave={(form) => handleUpdateDish(editingDish.id, form)}
+        />
       )}
     </AppShell>
   )
 }
 
-function NewDishForm({
-  onSave,
-  onClose,
-}: {
-  onSave: (form: {
-    name: string
-    category: string
-    ingredients: string
-    prep_time: string
-    storage_instructions: string
-    reheating_instructions: string
-    tags: string[]
-  }) => void
-  onClose: () => void
-}) {
-  const [name, setName] = useState("")
-  const [category, setCategory] = useState("")
-  const [ingredients, setIngredients] = useState("")
-  const [prepTime, setPrepTime] = useState("")
-  const [storage, setStorage] = useState("")
-  const [reheating, setReheating] = useState("")
-  const [tagsRaw, setTagsRaw] = useState("")
-
-  return (
-    <div className="space-y-4">
-      <Field label="Dish Name" value={name} onChange={setName} placeholder="e.g. Truffle Risotto" />
-      <Field label="Category" value={category} onChange={setCategory} placeholder="e.g. Pasta & Grains" />
-      <Field label="Ingredients" value={ingredients} onChange={setIngredients} placeholder="Comma-separated list" />
-      <Field label="Prep Time" value={prepTime} onChange={setPrepTime} placeholder="e.g. 45 min" />
-      <Field label="Storage Instructions" value={storage} onChange={setStorage} placeholder="e.g. Fridge up to 3 days" />
-      <Field label="Reheating Instructions" value={reheating} onChange={setReheating} placeholder="e.g. Stove, medium heat" />
-      <Field
-        label="Tags (comma-separated)"
-        value={tagsRaw}
-        onChange={setTagsRaw}
-        placeholder="e.g. gluten-free, quick"
-      />
-      <button
-        disabled={!name.trim()}
-        onClick={() =>
-          onSave({
-            name: name.trim(),
-            category: category.trim(),
-            ingredients: ingredients.trim(),
-            prep_time: prepTime.trim(),
-            storage_instructions: storage.trim(),
-            reheating_instructions: reheating.trim(),
-            tags: tagsRaw
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean),
-          })
-        }
-        className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
-      >
-        Save Dish
-      </button>
-    </div>
-  )
+type DishFormInput = {
+  name: string
+  category: string
+  ingredients: string
+  prep_time: string
+  storage_instructions: string
+  reheating_instructions: string
+  tags: string[]
 }
 
-function Field({
-  label,
-  placeholder,
-  value,
-  onChange,
+function DishFormModal({
+  title,
+  onClose,
+  initial,
+  onSave,
 }: {
-  label: string
-  placeholder: string
-  value: string
-  onChange: (v: string) => void
+  title: string
+  onClose: () => void
+  initial?: DishLibraryItem
+  onSave: (form: DishFormInput) => void | Promise<void>
 }) {
+  const formId = "dish-form"
+  const [name, setName] = useState(initial?.name ?? "")
+  const [category, setCategory] = useState(initial?.category ?? "")
+  const [ingredients, setIngredients] = useState(initial?.ingredients ?? "")
+  const [prepTime, setPrepTime] = useState(initial?.prep_time ?? "")
+  const [storage, setStorage] = useState(initial?.storage_instructions ?? "")
+  const [reheating, setReheating] = useState(initial?.reheating_instructions ?? "")
+  const [tagsRaw, setTagsRaw] = useState(initial?.tags.join(", ") ?? "")
+  const [saving, setSaving] = useState(false)
+
+  const canSubmit = name.trim().length > 0 && !saving
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!canSubmit) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(),
+        category: category.trim(),
+        ingredients: ingredients.trim(),
+        prep_time: prepTime.trim(),
+        storage_instructions: storage.trim(),
+        reheating_instructions: reheating.trim(),
+        tags: tagsRaw
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <div>
-      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-      <input
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
-    </div>
+    <SheetModal
+      open
+      onClose={onClose}
+      title={title}
+      footer={
+        <ModalSubmitFooter
+          formId={formId}
+          label="Save Dish"
+          saving={saving}
+          disabled={!canSubmit}
+          missing={!name.trim() ? ["dish name"] : []}
+        />
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        <FormField label="Dish Name" value={name} onChange={setName} placeholder="e.g. Truffle Risotto" required />
+        <FormField label="Category" value={category} onChange={setCategory} placeholder="e.g. Pasta & Grains" />
+        <FormField label="Ingredients" value={ingredients} onChange={setIngredients} placeholder="Comma-separated list" />
+        <FormField label="Prep Time" value={prepTime} onChange={setPrepTime} placeholder="e.g. 45 min" />
+        <FormField label="Storage Instructions" value={storage} onChange={setStorage} placeholder="e.g. Fridge up to 3 days" />
+        <FormField label="Reheating Instructions" value={reheating} onChange={setReheating} placeholder="e.g. Stove, medium heat" />
+        <FormField
+          label="Tags (comma-separated)"
+          value={tagsRaw}
+          onChange={setTagsRaw}
+          placeholder="e.g. gluten-free, quick"
+        />
+      </form>
+    </SheetModal>
   )
 }

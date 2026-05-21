@@ -1,16 +1,24 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import ShoppingItemCard from "@/components/ShoppingItemCard"
-import { mockShoppingItems, mockHomes } from "@/lib/mock-data"
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
+import SheetModal from "@/components/SheetModal"
+import FormField from "@/components/FormField"
+import ModalSubmitFooter from "@/components/ModalSubmitFooter"
+import { createClient } from "@/lib/supabase/client"
+import { getAuthUserId } from "@/lib/supabase/auth-helpers"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { computePantryStatus } from "@/lib/pantry-utils"
+import { useToast } from "@/components/ToastProvider"
+import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home, ShoppingItem, Priority } from "@/lib/types"
-import { Plus, X, Check } from "lucide-react"
+import { Plus, Check } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 
 export default function ShoppingListPage() {
+  const { showSuccess, showError } = useToast()
   const [items, setItems] = useState<ShoppingItem[]>([])
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
@@ -26,8 +34,7 @@ export default function ShoppingListPage() {
       setError(null)
       const supabase = createClient()
       if (!supabase) {
-        setItems(mockShoppingItems)
-        setHomes(mockHomes)
+        setError(CONFIG_ERROR)
         setLoading(false)
         return
       }
@@ -50,14 +57,16 @@ export default function ShoppingListPage() {
         if (itemsRes.error) throw itemsRes.error
         setItems((itemsRes.data as ShoppingItem[]) ?? [])
         setHomes((homesRes.data as Home[]) ?? [])
-      } catch {
+      } catch (err) {
+        logSupabaseError("shopping load", err)
         setError("Failed to load shopping list. Check your connection and try again.")
+        showError(getSupabaseErrorMessage(err))
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [retryCount])
+  }, [retryCount, showError])
 
   useEffect(() => {
     const supabase = createClient()
@@ -141,29 +150,48 @@ export default function ShoppingListPage() {
     )
 
     const supabase = createClient()
-    if (supabase) {
-      await supabase
-        .from("shopping_items")
-        .update({ status: "Purchased", completed_at: now })
-        .eq("id", purchaseItem.id)
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
 
-      if (
-        updatePantry &&
-        newQty.trim() &&
-        purchaseItem.pantry_item_id
-      ) {
-        const qty = parseFloat(newQty)
-        if (!isNaN(qty)) {
-          await supabase
-            .from("pantry_items")
-            .update({ quantity: qty, updated_at: now })
-            .eq("id", purchaseItem.pantry_item_id)
+    const { error: shopError } = await supabase
+      .from("shopping_items")
+      .update({ status: "Purchased", completed_at: now })
+      .eq("id", purchaseItem.id)
+
+    if (shopError) {
+      logSupabaseError("shopping purchase", shopError)
+      showError(getSupabaseErrorMessage(shopError))
+      return
+    }
+
+    if (updatePantry && newQty.trim() && purchaseItem.pantry_item_id) {
+      const qty = parseFloat(newQty)
+      if (!isNaN(qty)) {
+        const { data: pantryRow } = await supabase
+          .from("pantry_items")
+          .select("minimum_quantity")
+          .eq("id", purchaseItem.pantry_item_id)
+          .single()
+
+        const minQty = pantryRow?.minimum_quantity ?? 0
+        const status = computePantryStatus(qty, minQty)
+        const { error: pantryError } = await supabase
+          .from("pantry_items")
+          .update({ quantity: qty, status, updated_at: now })
+          .eq("id", purchaseItem.pantry_item_id)
+
+        if (pantryError) {
+          logSupabaseError("pantry update from purchase", pantryError)
+          showError(getSupabaseErrorMessage(pantryError))
         }
       }
     }
 
     setPurchaseItem(null)
     setNewQty("")
+    showSuccess("Item marked as purchased")
   }
 
   async function handleAddItem(form: {
@@ -176,27 +204,70 @@ export default function ShoppingListPage() {
   }) {
     const supabase = createClient()
     if (!supabase) {
-      const newItem: ShoppingItem = {
-        id: crypto.randomUUID(),
-        added_by: "local",
-        created_at: new Date().toISOString(),
-        status: "Open",
-        home: homes.find((h) => h.id === form.home_id),
-        ...form,
-      }
-      setItems((prev) => [newItem, ...prev])
-      setShowAdd(false)
+      showError(CONFIG_ERROR)
+      return
+    }
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in to add shopping items.")
       return
     }
     const { data, error } = await supabase
       .from("shopping_items")
-      .insert({ ...form, status: "Open" })
+      .insert({ ...form, status: "Open", added_by: userId })
       .select(
         "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)"
       )
       .single()
-    if (!error && data) setItems((prev) => [data as ShoppingItem, ...prev])
+    if (error) {
+      logSupabaseError("shopping insert", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    if (data) setItems((prev) => [data as ShoppingItem, ...prev])
     setShowAdd(false)
+    showSuccess("Added to shopping list")
+  }
+
+  async function handleRemove(item: ShoppingItem) {
+    if (!confirm(`Remove "${item.name}" from the shopping list?`)) return
+    const supabase = createClient()
+    if (!supabase) return
+    const { error } = await supabase
+      .from("shopping_items")
+      .update({ archived_at: new Date().toISOString(), status: "Archived" })
+      .eq("id", item.id)
+    if (error) {
+      logSupabaseError("shopping archive", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    showSuccess("Item removed")
+  }
+
+  async function handleReopen(item: ShoppingItem) {
+    const supabase = createClient()
+    if (!supabase) return
+    const { data, error } = await supabase
+      .from("shopping_items")
+      .update({ status: "Open", completed_at: null })
+      .eq("id", item.id)
+      .select(
+        "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)",
+      )
+      .single()
+    if (error) {
+      logSupabaseError("shopping reopen", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    if (data) {
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? (data as ShoppingItem) : i)),
+      )
+    }
+    showSuccess("Item moved back to open")
   }
 
   // Group open items by home
@@ -214,7 +285,7 @@ export default function ShoppingListPage() {
         subtitle={
           loading
             ? "Loading…"
-            : `${open.length} open · ${purchased.length} purchased${isSupabaseConfigured ? " · live" : ""}`
+            : `${open.length} open · ${purchased.length} purchased`
         }
         action={
           <button
@@ -253,6 +324,7 @@ export default function ShoppingListPage() {
                   key={item.id}
                   item={item}
                   onPurchase={handlePurchase}
+                  onRemove={handleRemove}
                 />
               ))}
             </div>
@@ -267,91 +339,73 @@ export default function ShoppingListPage() {
           </h2>
           <div className="rounded-[22px] border border-[#E6EEF8] bg-white px-4 opacity-60 shadow-md shadow-slate-900/4">
             {purchased.map((item) => (
-              <ShoppingItemCard key={item.id} item={item} />
+              <div key={item.id} className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <ShoppingItemCard item={item} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleReopen(item)}
+                  className="shrink-0 rounded-xl border border-[#E6EEF8] px-3 py-2 text-xs font-bold text-blue-600"
+                >
+                  Reopen
+                </button>
+              </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* PURCHASE CONFIRMATION MODAL */}
       {purchaseItem && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[32px] bg-white px-6 pb-10 pt-6 shadow-2xl">
-            <div className="mb-1 flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-slate-900">
-                Mark Purchased
-              </h2>
-              <button
-                onClick={() => setPurchaseItem(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <p className="mb-5 text-sm text-slate-500">
-              Marking <strong>{purchaseItem.name}</strong> as purchased. Do you
-              want to update the pantry quantity?
-            </p>
-
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-              New Pantry Quantity (optional)
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={newQty}
-              onChange={(e) => setNewQty(e.target.value)}
-              placeholder="e.g. 2"
-              className="mb-5 w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
-
+        <SheetModal
+          open
+          onClose={() => setPurchaseItem(null)}
+          title="Mark Purchased"
+          footer={
             <div className="flex gap-3">
               <button
+                type="button"
                 onClick={() => confirmPurchase(false)}
-                className="flex-1 rounded-2xl border border-[#E6EEF8] py-3.5 text-sm font-bold text-slate-600"
+                className="min-h-[48px] flex-1 rounded-2xl border border-[#E6EEF8] py-3.5 text-sm font-bold text-slate-600"
               >
                 Just Mark Purchased
               </button>
               <button
+                type="button"
                 onClick={() => confirmPurchase(true)}
-                className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+                className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
               >
                 <Check size={15} />
                 Update Pantry
               </button>
             </div>
-          </div>
-        </div>
+          }
+        >
+          <p className="mb-5 text-sm text-slate-500">
+            Marking <strong>{purchaseItem.name}</strong> as purchased. Update pantry
+            quantity?
+          </p>
+          <FormField
+            label="New Pantry Quantity (optional)"
+            value={newQty}
+            onChange={setNewQty}
+            placeholder="e.g. 2"
+          />
+        </SheetModal>
       )}
 
-      {/* ADD ITEM MODAL */}
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-y-auto rounded-t-[32px] bg-white px-6 pb-10 pt-6 shadow-2xl max-h-[90vh]">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-slate-900">
-                Add Shopping Item
-              </h2>
-              <button
-                onClick={() => setShowAdd(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <AddShoppingForm
-              homes={homes}
-              onSave={handleAddItem}
-              onClose={() => setShowAdd(false)}
-            />
-          </div>
-        </div>
+        <AddShoppingModal
+          homes={homes}
+          onClose={() => setShowAdd(false)}
+          onSave={handleAddItem}
+        />
       )}
     </AppShell>
   )
 }
 
-function AddShoppingForm({
+function AddShoppingModal({
   homes,
   onSave,
   onClose,
@@ -364,103 +418,116 @@ function AddShoppingForm({
     priority: Priority
     notes: string
     home_id: string
-  }) => void
+  }) => void | Promise<void>
   onClose: () => void
 }) {
+  const formId = "add-shopping-form"
   const [name, setName] = useState("")
   const [qtyNeeded, setQtyNeeded] = useState("")
   const [category, setCategory] = useState("")
   const [priority, setPriority] = useState<Priority>("Normal")
   const [notes, setNotes] = useState("")
-  const [homeId, setHomeId] = useState(homes[0]?.id ?? "")
+  const [homeId, setHomeId] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (homes.length > 0 && !homeId) setHomeId(homes[0].id)
+  }, [homes, homeId])
+
+  const validation = useMemo(() => {
+    const missing: string[] = []
+    if (!name.trim()) missing.push("item name")
+    if (!homeId) missing.push("residence")
+    if (homes.length === 0) missing.push("add a residence first")
+    return { canSubmit: missing.length === 0 && !saving, missing }
+  }, [name, homeId, homes.length, saving])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!validation.canSubmit) return
+    setSaving(true)
+    try {
+      await onSave({
+        name: name.trim(),
+        quantity_needed: qtyNeeded.trim(),
+        category: category.trim(),
+        priority,
+        notes: notes.trim(),
+        home_id: homeId,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      {homes.length > 1 && (
+    <SheetModal
+      open
+      onClose={onClose}
+      title="Add Shopping Item"
+      footer={
+        <ModalSubmitFooter
+          formId={formId}
+          label="Add to List"
+          saving={saving}
+          disabled={!validation.canSubmit}
+          missing={validation.missing}
+        />
+      }
+    >
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+        {homes.length === 0 ? (
+          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Add a residence first.
+          </p>
+        ) : homes.length > 1 ? (
+          <div>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Residence
+            </label>
+            <select
+              value={homeId}
+              onChange={(e) => setHomeId(e.target.value)}
+              className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900"
+            >
+              {homes.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <p className="rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">
+            {homes[0].name}
+          </p>
+        )}
+        <FormField label="Item Name" value={name} onChange={setName} placeholder="e.g. Milk" required />
+        <FormField label="Quantity Needed" value={qtyNeeded} onChange={setQtyNeeded} placeholder="e.g. 2L" />
+        <FormField label="Category (optional)" value={category} onChange={setCategory} placeholder="e.g. Dairy" />
         <div>
           <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Residence
+            Priority
           </label>
-          <select
-            value={homeId}
-            onChange={(e) => setHomeId(e.target.value)}
-            className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-          >
-            {homes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
+          <div className="flex gap-2">
+            {(["Normal", "Important", "Urgent"] as Priority[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPriority(p)}
+                className={`flex-1 rounded-xl border py-2.5 text-xs font-bold transition-colors ${
+                  priority === p
+                    ? "border-blue-500 bg-blue-600 text-white"
+                    : "border-[#E6EEF8] text-slate-600"
+                }`}
+              >
+                {p}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
-      )}
-      <FormField label="Item Name" value={name} onChange={setName} placeholder="e.g. Milk" />
-      <FormField label="Quantity Needed" value={qtyNeeded} onChange={setQtyNeeded} placeholder="e.g. 2L" />
-      <FormField label="Category (optional)" value={category} onChange={setCategory} placeholder="e.g. Dairy" />
-      <div>
-        <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-          Priority
-        </label>
-        <div className="flex gap-2">
-          {(["Normal", "Important", "Urgent"] as Priority[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPriority(p)}
-              className={`flex-1 rounded-xl border py-2.5 text-xs font-bold transition-colors ${
-                priority === p
-                  ? "border-blue-500 bg-blue-600 text-white"
-                  : "border-[#E6EEF8] text-slate-600"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-      </div>
-      <FormField label="Notes (optional)" value={notes} onChange={setNotes} placeholder="Any details…" />
-      <button
-        disabled={!name.trim() || !homeId}
-        onClick={() =>
-          onSave({
-            name: name.trim(),
-            quantity_needed: qtyNeeded.trim(),
-            category: category.trim(),
-            priority,
-            notes: notes.trim(),
-            home_id: homeId,
-          })
-        }
-        className="w-full rounded-2xl bg-blue-600 py-4 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
-      >
-        Add to List
-      </button>
-    </div>
-  )
-}
-
-function FormField({
-  label,
-  placeholder,
-  value,
-  onChange,
-}: {
-  label: string
-  placeholder: string
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-      <input
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-      />
-    </div>
+        <FormField label="Notes (optional)" value={notes} onChange={setNotes} placeholder="Any details…" />
+      </form>
+    </SheetModal>
   )
 }
