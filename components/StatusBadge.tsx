@@ -6,11 +6,11 @@ interface Props {
 }
 
 const styles: Record<StatusType, string> = {
-  critical: "bg-red-100 text-red-800",
-  low: "bg-amber-100 text-amber-700",
-  ok: "bg-green-100 text-green-700",
-  blue: "bg-blue-100 text-blue-700",
-  warning: "bg-orange-100 text-orange-700",
+  critical: "bg-rose-50 text-rose-800 ring-1 ring-rose-100/80",
+  low: "bg-amber-50/90 text-amber-900 ring-1 ring-amber-100/80",
+  ok: "bg-stone-100 text-stone-600 ring-1 ring-stone-200/60",
+  blue: "bg-navy/5 text-navy-light ring-1 ring-navy/10",
+  warning: "bg-orange-50/90 text-orange-900 ring-1 ring-orange-100/80",
 }
 
 export function pantryStatusType(status: PantryStatus): StatusType {
@@ -36,8 +36,8 @@ export default function StatusBadge({ label, type = "blue" }: Props) {
     <span
       className={`
         inline-flex items-center
-        rounded-full px-3 py-1
-        text-xs font-extrabold
+        rounded-full px-2.5 py-0.5
+        text-[11px] font-semibold tracking-wide
         whitespace-nowrap
         ${styles[type]}
       `}

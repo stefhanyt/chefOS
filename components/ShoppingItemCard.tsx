@@ -15,19 +15,16 @@ export default function ShoppingItemCard({ item, onPurchase, onRemove }: Props) 
 
   return (
     <div
-      className={`
-        flex items-center justify-between py-4
-        border-b border-slate-100 last:border-0
-        ${isPurchased ? "opacity-50" : ""}
-      `}
+      className={`flex items-center justify-between gap-2 border-b border-stone-100 py-4 last:border-0 ${
+        isPurchased ? "opacity-55" : ""
+      }`}
     >
-      <div className="flex-1 min-w-0 pr-3">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="min-w-0 flex-1 pr-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h3
-            className={`
-              font-bold text-slate-900
-              ${isPurchased ? "line-through" : ""}
-            `}
+            className={`font-semibold text-charcoal ${
+              isPurchased ? "line-through decoration-stone-300" : ""
+            }`}
           >
             {item.name}
           </h3>
@@ -38,48 +35,44 @@ export default function ShoppingItemCard({ item, onPurchase, onRemove }: Props) 
             />
           )}
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-stone-500">
           <span className="flex items-center gap-1">
-            <Home size={10} />
+            <Home size={10} strokeWidth={1.5} />
             {item.home?.name ?? "—"}
           </span>
-          <span>·</span>
-          <span>
-            {item.quantity_needed}
-          </span>
-          <span>·</span>
-          <span>by {item.added_by_profile?.display_name ?? "Someone"}</span>
+          <span>{item.quantity_needed}</span>
+          <span>· {item.added_by_profile?.display_name ?? "Staff"}</span>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center">
         {!isPurchased && onRemove && (
           <button
             type="button"
             onClick={() => onRemove(item)}
-            className="flex h-11 w-11 items-center justify-center text-red-400"
+            className="flex h-10 w-10 items-center justify-center text-stone-400 hover:text-rose-700"
             aria-label="Remove item"
           >
-            <Trash2 size={16} />
+            <Trash2 size={16} strokeWidth={1.5} />
           </button>
         )}
         <button
           type="button"
           onClick={() => !isPurchased && onPurchase?.(item.id)}
-          className="flex h-11 w-11 items-center justify-center"
+          className="flex h-10 w-10 items-center justify-center"
           aria-label={isPurchased ? "Purchased" : "Mark as purchased"}
         >
-        <span
-          className={`flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-all ${
-            isPurchased
-              ? "border-green-500 bg-green-500"
-              : "border-slate-300 active:border-blue-400"
-          }`}
-        >
-          {isPurchased && (
-            <Check size={14} className="text-white" strokeWidth={3} />
-          )}
-        </span>
+          <span
+            className={`flex h-7 w-7 items-center justify-center rounded-lg border-2 transition-all ${
+              isPurchased
+                ? "border-navy bg-navy"
+                : "border-stone-300 hover:border-gold/60"
+            }`}
+          >
+            {isPurchased && (
+              <Check size={14} className="text-ivory" strokeWidth={2.5} />
+            )}
+          </span>
         </button>
       </div>
     </div>

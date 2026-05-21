@@ -193,15 +193,15 @@ export default function ScanPage() {
       <div className="mb-6 flex items-center gap-3">
         <Link
           href="/dashboard"
-          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-blue-600"
+          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-navy-light"
         >
           <ChevronLeft size={16} />
           Back
         </Link>
-        <h1 className="text-xl font-extrabold text-slate-900">Scan Item</h1>
+        <h1 className="font-display text-xl font-semibold text-charcoal">Scan item</h1>
         <Link
           href="/scan/history"
-          className="ml-auto text-xs font-bold text-blue-600"
+          className="ml-auto text-xs font-bold text-navy-light"
         >
           History
         </Link>
@@ -263,14 +263,14 @@ export default function ScanPage() {
           />
           <button
             onClick={() => fileRef.current?.click()}
-            className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-600"
+            className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
           >
             <Image size={15} />
             Use Photo Library
           </button>
           <button
             onClick={() => { stopScanner(); setScanState("manual") }}
-            className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-600"
+            className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
           >
             Enter Manually
           </button>
@@ -279,7 +279,7 @@ export default function ScanPage() {
 
       {scanState === "looking_up" && (
         <div className="flex flex-col items-center justify-center gap-4 py-20">
-          <Loader2 size={36} className="animate-spin text-blue-600" />
+          <Loader2 size={36} className="animate-spin text-navy-light" />
           <p className="text-sm text-slate-500">
             {barcode ? `Looking up barcode ${barcode}…` : "Processing image…"}
           </p>
@@ -330,7 +330,7 @@ export default function ScanPage() {
               <select
                 value={homeId}
                 onChange={(e) => setHomeId(e.target.value)}
-                className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-gold/15"
               >
                 {homes.map((h) => (
                   <option key={h.id} value={h.id}>
@@ -351,14 +351,14 @@ export default function ScanPage() {
           <button
             onClick={handleSave}
             disabled={!productName.trim()}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
+            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft disabled:opacity-50"
           >
             Save to Pantry
           </button>
 
           <button
             onClick={() => { setScanState("scanning"); setErrorKind("none"); setErrorMsg(""); startScanner() }}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-600"
+            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
           >
             Scan Another
           </button>
@@ -370,11 +370,11 @@ export default function ScanPage() {
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
             <Check size={32} className="text-green-600" />
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900">Saved!</h2>
+          <h2 className="text-xl font-semibold text-slate-900">Saved!</h2>
           <p className="text-sm text-slate-500">{productName} added to pantry.</p>
           <div className="mt-4 flex w-full gap-3">
             <Link href="/pantry" className="flex-1">
-              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-600">
+              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600">
                 View Pantry
               </button>
             </Link>
@@ -390,7 +390,7 @@ export default function ScanPage() {
                 setErrorMsg("")
                 startScanner()
               }}
-              className="flex flex-1 min-h-[44px] items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+              className="flex flex-1 min-h-[44px] items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
             >
               Scan Again
             </button>
@@ -425,7 +425,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-gold/15"
       />
     </div>
   )

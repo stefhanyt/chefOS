@@ -18,11 +18,12 @@ export default function SignOutButton() {
 
   return (
     <button
+      type="button"
       onClick={handleSignOut}
-      className="mt-2 flex w-full items-center justify-center gap-2 rounded-[22px] border border-red-100 bg-red-50 py-4 text-sm font-bold text-red-600 transition-colors active:bg-red-100"
+      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-stone-200/80 bg-surface py-3.5 text-sm font-semibold text-stone-600 transition active:bg-stone-50"
     >
-      <LogOut size={16} />
-      Sign Out
+      <LogOut size={16} strokeWidth={1.5} />
+      Sign out
     </button>
   )
 }

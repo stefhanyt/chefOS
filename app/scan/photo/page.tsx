@@ -231,14 +231,14 @@ export default function PhotoScanPage() {
     <AppShell>
       <Link
         href="/dashboard"
-        className="mb-4 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-blue-600"
+        className="mb-4 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-navy-light"
       >
         <ChevronLeft size={16} />
         Back
       </Link>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-slate-900">Photo Scan</h1>
+        <h1 className="text-2xl font-semibold text-slate-900">Photo Scan</h1>
         <p className="mt-1 text-sm text-slate-500">
           {step === "upload" && "Photograph your groceries — AI identifies every item"}
           {step === "analyzing" && "Identifying products from your photo…"}
@@ -265,7 +265,7 @@ export default function PhotoScanPage() {
               <img src={imagePreview} alt="preview" className="w-full rounded-2xl" />
             ) : (
               <>
-                <p className="text-base font-extrabold text-blue-600">Take or Upload Photo</p>
+                <p className="text-base font-semibold text-navy-light">Take or Upload Photo</p>
                 <p className="text-sm leading-relaxed text-slate-500">
                   Shelf, delivery bag, counter — AI identifies every visible item
                 </p>
@@ -283,14 +283,14 @@ export default function PhotoScanPage() {
           {imagePreview ? (
             <button
               onClick={analyze}
-              className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+              className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
             >
               Analyze Photo
             </button>
           ) : (
             <button
               onClick={() => fileRef.current?.click()}
-              className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-600"
+              className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
             >
               Choose from Library
             </button>
@@ -301,7 +301,7 @@ export default function PhotoScanPage() {
       {/* ANALYZING STEP */}
       {step === "analyzing" && (
         <div className="flex flex-col items-center justify-center gap-4 py-20">
-          <Loader2 size={36} className="animate-spin text-blue-600" />
+          <Loader2 size={36} className="animate-spin text-navy-light" />
           <p className="text-sm text-slate-500">Reading labels and classifying items…</p>
         </div>
       )}
@@ -315,9 +315,9 @@ export default function PhotoScanPage() {
           {items.map((item, i) => (
             <div
               key={i}
-              className="mb-2 flex items-center gap-3 rounded-2xl border border-[#E6EEF8] bg-white px-4 py-3"
+              className="mb-2 flex items-center gap-3 rounded-2xl border border-stone-200/60 bg-white px-4 py-3"
             >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-extrabold text-blue-700">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
                 {i + 1}
               </div>
               <div className="min-w-0 flex-1">
@@ -330,13 +330,13 @@ export default function PhotoScanPage() {
           ))}
           <button
             onClick={() => { setCurrentIndex(0); setStep("detail") }}
-            className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+            className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
           >
             Start Confirming
           </button>
           <button
             onClick={reset}
-            className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-500"
+            className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-500"
           >
             Retake Photo
           </button>
@@ -349,19 +349,19 @@ export default function PhotoScanPage() {
           <div className="mb-4">
             <div className="mb-2 flex justify-between text-xs font-bold">
               <span className="text-slate-500">Item {currentIndex + 1} of {items.length}</span>
-              <span className="text-blue-600">{confirmed.length} saved</span>
+              <span className="text-navy-light">{confirmed.length} saved</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-blue-600 transition-all"
+                className="h-full rounded-full bg-navy transition-all"
                 style={{ width: `${(currentIndex / items.length) * 100}%` }}
               />
             </div>
           </div>
 
-          <div className="mb-4 rounded-2xl bg-[#0F2A55] p-4 text-white">
+          <div className="mb-4 rounded-2xl bg-navy p-4 text-white">
             <p className="mb-2 text-xs font-bold uppercase tracking-wider opacity-50">Detected</p>
-            <p className="text-lg font-extrabold">{current.name}</p>
+            <p className="text-lg font-semibold">{current.name}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="rounded-full bg-white/20 px-2.5 py-1 text-xs font-bold">
                 {current.quantity} {current.unit}
@@ -372,12 +372,12 @@ export default function PhotoScanPage() {
             </div>
           </div>
 
-          <div className="mb-4 space-y-4 rounded-[20px] border border-[#E6EEF8] bg-white p-4">
+          <div className="mb-4 space-y-4 rounded-[20px] border border-stone-200/60 bg-white p-4">
             <Field label="Product Name">
               <input
                 value={current.name}
                 onChange={(e) => updateCurrent("name", e.target.value)}
-                className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -387,14 +387,14 @@ export default function PhotoScanPage() {
                   inputMode="decimal"
                   value={current.quantity}
                   onChange={(e) => updateCurrent("quantity", Number(e.target.value))}
-                  className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
               </Field>
               <Field label="Unit">
                 <input
                   value={current.unit}
                   onChange={(e) => updateCurrent("unit", e.target.value)}
-                  className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
               </Field>
             </div>
@@ -402,7 +402,7 @@ export default function PhotoScanPage() {
               <select
                 value={current.category}
                 onChange={(e) => updateCurrent("category", e.target.value)}
-                className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none"
+                className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 focus:outline-none"
               >
                 {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
               </select>
@@ -418,7 +418,7 @@ export default function PhotoScanPage() {
                         ? d === "Shopping List"
                           ? "border-blue-300 bg-blue-100 text-blue-700"
                           : "border-green-300 bg-green-100 text-green-700"
-                        : "border-[#E6EEF8] bg-white text-slate-500"
+                        : "border-stone-200/60 bg-white text-slate-500"
                     }`}
                   >
                     {d}
@@ -436,7 +436,7 @@ export default function PhotoScanPage() {
                       className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
                         current.home_id === h.id
                           ? "border-2 border-blue-600 bg-blue-50 text-blue-700"
-                          : "border-[#E6EEF8] bg-white text-slate-600"
+                          : "border-stone-200/60 bg-white text-slate-600"
                       }`}
                     >
                       {h.name}
@@ -451,7 +451,7 @@ export default function PhotoScanPage() {
                 value={current.storage_location}
                 onChange={(e) => updateCurrent("storage_location", e.target.value)}
                 placeholder="e.g. Main Fridge, Freezer, Pantry shelf"
-                className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
               />
             </Field>
             {current.destination === "Pantry" && (
@@ -462,7 +462,7 @@ export default function PhotoScanPage() {
                   value={current.minimum_quantity}
                   onChange={(e) => updateCurrent("minimum_quantity", e.target.value)}
                   placeholder="e.g. 2"
-                  className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3.5 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                 />
               </Field>
             )}
@@ -471,13 +471,13 @@ export default function PhotoScanPage() {
           <button
             onClick={saveAndNext}
             disabled={!current.destination}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
+            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft disabled:opacity-50"
           >
             Save & Next
           </button>
           <button
             onClick={skipAndNext}
-            className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-500"
+            className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-500"
           >
             Skip this item
           </button>
@@ -491,7 +491,7 @@ export default function PhotoScanPage() {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
               <Check size={28} className="text-green-600" />
             </div>
-            <h2 className="text-xl font-extrabold text-slate-900">
+            <h2 className="text-xl font-semibold text-slate-900">
               {confirmed.length} items saved
             </h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -505,10 +505,10 @@ export default function PhotoScanPage() {
             if (!homeItems.length) return null
             return (
               <div key={h.id} className="mb-4">
-                <p className="mb-2 text-xs font-extrabold uppercase tracking-widest text-slate-400">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
                   {h.name}
                 </p>
-                <div className="rounded-[20px] border border-[#E6EEF8] bg-white px-4 shadow-sm">
+                <div className="rounded-[20px] border border-stone-200/60 bg-white px-4 shadow-sm">
                   {homeItems.map((item, i) => (
                     <div
                       key={i}
@@ -538,7 +538,7 @@ export default function PhotoScanPage() {
 
           <button
             onClick={reset}
-            className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+            className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
           >
             Scan Another Photo
           </button>

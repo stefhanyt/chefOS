@@ -49,22 +49,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed left-4 right-4 top-4 z-[100] mx-auto flex max-w-md flex-col gap-2"
+        className="pointer-events-none fixed left-4 right-4 top-4 z-[110] mx-auto flex max-w-md flex-col gap-2"
         aria-live="polite"
       >
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`flex items-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold shadow-2xl ${
+            className={`flex items-center gap-2.5 rounded-2xl border px-4 py-3.5 text-sm font-medium shadow-card-lg backdrop-blur-sm ${
               toast.type === "success"
-                ? "bg-[#0F2A55] text-white"
-                : "bg-red-600 text-white"
+                ? "border-navy/10 bg-navy text-ivory"
+                : "border-rose-200/80 bg-surface text-rose-800"
             }`}
           >
             {toast.type === "success" ? (
-              <Check size={16} className="shrink-0" />
+              <Check size={16} className="shrink-0 text-gold-light" strokeWidth={2} />
             ) : (
-              <AlertCircle size={16} className="shrink-0" />
+              <AlertCircle size={16} className="shrink-0 text-rose-600" strokeWidth={1.5} />
             )}
             <span>{toast.message}</span>
           </div>

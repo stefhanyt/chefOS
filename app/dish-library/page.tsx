@@ -11,6 +11,9 @@ import { useToast } from "@/components/ToastProvider"
 import type { DishLibraryItem } from "@/lib/types"
 import { Plus, Clock, BookOpen, Trash2 } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
+import { SkeletonList } from "@/components/Skeleton"
+import { ui } from "@/lib/ui"
 import SheetModal from "@/components/SheetModal"
 import FormField from "@/components/FormField"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
@@ -139,7 +142,7 @@ export default function DishLibraryPage() {
         action={
           <button
             onClick={() => setShowModal(true)}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30"
+            className={ui.btnHeader}
           >
             <Plus size={15} />
             New Dish
@@ -158,24 +161,19 @@ export default function DishLibraryPage() {
       />
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2].map((i) => (
-            <div key={i} className="h-36 animate-pulse rounded-[22px] bg-slate-200" />
-          ))}
-        </div>
+        <SkeletonList count={2} className="h-36" />
       ) : filtered.length === 0 ? (
-        <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-8 text-center text-sm text-slate-400">
-          {search ? "No dishes found." : "Library is empty. Add your first dish!"}
-        </div>
+        <EmptyState
+          message={
+            search ? "No dishes match your search." : "Your recipe library is empty. Add your first dish."
+          }
+        />
       ) : (
         filtered.map((dish) => (
-          <div
-            key={dish.id}
-            className="mb-4 rounded-[22px] border border-[#E6EEF8] bg-white p-5 shadow-md shadow-slate-900/4"
-          >
+          <div key={dish.id} className={`${ui.cardElevated} mb-4 p-5`}>
             <div className="flex items-start justify-between">
               <div className="min-w-0 flex-1 pr-3">
-                <h3 className="font-extrabold text-slate-900">{dish.name}</h3>
+                <h3 className="font-display text-lg font-semibold text-charcoal">{dish.name}</h3>
                 <p className="mt-0.5 text-xs text-slate-400">{dish.category}</p>
               </div>
               <div className="flex shrink-0 items-center gap-1 text-xs text-slate-400">
@@ -192,7 +190,7 @@ export default function DishLibraryPage() {
               {dish.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600"
+                  className="rounded-full bg-navy/5 px-2.5 py-1 text-xs font-medium text-navy-light"
                 >
                   #{tag}
                 </span>
@@ -202,7 +200,7 @@ export default function DishLibraryPage() {
             <div className="mt-4 flex gap-2">
               <button
                 onClick={() => setEditingDish(dish)}
-                className="flex-1 rounded-2xl border border-[#E6EEF8] py-2.5 text-xs font-bold text-slate-600"
+                className={`${ui.btnSecondary} flex-1 py-2.5 text-xs`}
               >
                 Edit
               </button>
@@ -215,7 +213,7 @@ export default function DishLibraryPage() {
               </button>
               <a
                 href={`/meals`}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-blue-600 py-2.5 text-xs font-extrabold text-white"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-navy py-2.5 text-xs font-semibold text-ivory shadow-soft"
               >
                 <BookOpen size={13} />
                 Log Meal

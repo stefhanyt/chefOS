@@ -12,6 +12,7 @@ import { useToast } from "@/components/ToastProvider"
 import { Users, Home, Bell, Shield, ChevronRight } from "lucide-react"
 import type { Profile } from "@/lib/types"
 import ErrorBanner from "@/components/ErrorBanner"
+import { ui } from "@/lib/ui"
 
 const CONFIG_ERROR =
   "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
@@ -127,17 +128,17 @@ export default function SettingsPage() {
       {error && <ErrorBanner message={error} />}
 
       {loading ? (
-        <div className="mb-6 h-32 animate-pulse rounded-[26px] bg-slate-200" />
+        <div className={`${ui.skeleton} mb-6 h-32`} />
       ) : profile ? (
-        <div className="mb-6 rounded-[26px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] p-6 text-white shadow-xl shadow-blue-500/20">
+        <div className={`mb-7 ${ui.hero}`}>
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 text-2xl font-extrabold backdrop-blur-sm">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-ivory/20 bg-ivory/10 font-display text-2xl font-semibold backdrop-blur-sm">
               {initial}
             </div>
             <div className="flex-1">
-              <h2 className="text-lg font-extrabold">{profile.display_name}</h2>
-              <p className="text-sm text-blue-200">{profile.email}</p>
-              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-blue-300">
+              <h2 className="font-display text-lg font-semibold">{profile.display_name}</h2>
+              <p className="text-sm text-ivory/70">{profile.email}</p>
+              <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-gold-light/90">
                 {profile.role}
               </p>
             </div>
@@ -146,23 +147,21 @@ export default function SettingsPage() {
       ) : null}
 
       {!loading && profile && (
-        <div className="mb-6 rounded-[22px] border border-[#E6EEF8] bg-white p-5 shadow-md shadow-slate-900/4">
-          <h2 className="mb-4 text-xs font-extrabold uppercase tracking-widest text-slate-400">
-            Edit Profile
+        <div className={`${ui.cardElevated} mb-7 p-5`}>
+          <h2 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
+            Edit profile
           </h2>
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Display Name
-          </label>
+          <label className="chef-label">Display name</label>
           <input
             type="text"
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
-            className="mb-4 w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="chef-input mb-4"
           />
           <button
             disabled={saving || !editName.trim()}
             onClick={handleSaveProfile}
-            className="w-full rounded-2xl bg-blue-600 py-3.5 text-sm font-extrabold text-white disabled:opacity-50"
+            className="chef-btn-primary disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save Profile"}
           </button>
@@ -171,10 +170,10 @@ export default function SettingsPage() {
 
       {settingsGroups.map((group) => (
         <div key={group.group} className="mb-5">
-          <h2 className="mb-2 text-xs font-extrabold uppercase tracking-widest text-slate-400">
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
             {group.group}
           </h2>
-          <div className="overflow-hidden rounded-[22px] border border-[#E6EEF8] bg-white shadow-md shadow-slate-900/4">
+          <div className={`${ui.cardInset} overflow-hidden`}>
             {group.items.map((item, i) => (
               <Link
                 key={item.label}
@@ -184,15 +183,15 @@ export default function SettingsPage() {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                    <item.icon size={17} />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy/5 text-navy-light">
+                    <item.icon size={17} strokeWidth={1.5} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900">{item.label}</p>
-                    <p className="text-xs text-slate-400">{item.sub}</p>
+                    <p className="text-sm font-semibold text-charcoal">{item.label}</p>
+                    <p className="text-xs text-stone-500">{item.sub}</p>
                   </div>
                 </div>
-                <ChevronRight size={16} className="text-slate-300" />
+                <ChevronRight size={16} className="text-stone-300" strokeWidth={1.5} />
               </Link>
             ))}
           </div>

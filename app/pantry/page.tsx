@@ -17,6 +17,9 @@ import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home, PantryItem, PantryStatus } from "@/lib/types"
 import { Plus } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
+import { SkeletonList } from "@/components/Skeleton"
+import { ui } from "@/lib/ui"
 
 const STATUS_FILTERS: (PantryStatus | "All")[] = [
   "All",
@@ -219,7 +222,7 @@ export default function PantryPage() {
         action={
           <button
             onClick={() => setModalMode("add")}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30"
+            className={ui.btnHeader}
           >
             <Plus size={15} />
             Add
@@ -238,10 +241,8 @@ export default function PantryPage() {
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition-colors ${
-              statusFilter === s
-                ? "bg-blue-600 text-white"
-                : "border border-[#E6EEF8] bg-white text-slate-500"
+            className={`transition-colors ${
+              statusFilter === s ? ui.chipActive : ui.chip
             }`}
           >
             {s}
@@ -250,17 +251,15 @@ export default function PantryPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-[22px] bg-slate-200" />
-          ))}
-        </div>
+        <SkeletonList count={3} />
       ) : filtered.length === 0 ? (
-        <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-8 text-center text-sm text-slate-400">
-          {search || statusFilter !== "All"
-            ? "No items match your search."
-            : "Pantry is empty. Add your first item!"}
-        </div>
+        <EmptyState
+          message={
+            search || statusFilter !== "All"
+              ? "No items match your search."
+              : "Pantry is empty. Add your first item to begin tracking stock."
+          }
+        />
       ) : (
         filtered.map((item) => (
           <PantryItemCard
@@ -371,18 +370,16 @@ function PantryItemFormModal({
           </p>
         ) : (
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-              Residence
-            </label>
+            <label className="chef-label">Residence</label>
             {homes.length === 1 ? (
-              <p className="rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">
+              <p className="rounded-xl border border-stone-200/80 bg-stone-50/50 px-4 py-3 text-sm font-medium text-charcoal">
                 {homes[0].name}
               </p>
             ) : (
               <select
                 value={homeId}
                 onChange={(e) => setHomeId(e.target.value)}
-                className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900"
+                className="chef-input"
               >
                 {homes.map((h) => (
                   <option key={h.id} value={h.id}>

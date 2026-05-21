@@ -187,18 +187,18 @@ export default function BatchScanPage() {
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
             <Check size={32} className="text-green-600" />
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900">{items.length} items added!</h2>
+          <h2 className="text-xl font-semibold text-slate-900">{items.length} items added!</h2>
           <p className="text-center text-sm text-slate-500">
             All scanned items have been saved to your pantry.
           </p>
           <div className="mt-4 flex w-full gap-3">
             <Link href="/pantry" className="flex-1">
-              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-[#E6EEF8] bg-white text-sm font-bold text-slate-600">
+              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600">
                 View Pantry
               </button>
             </Link>
             <Link href="/dashboard" className="flex-1">
-              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30">
+              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30">
                 Dashboard
               </button>
             </Link>
@@ -213,13 +213,13 @@ export default function BatchScanPage() {
       <div className="mb-4 flex items-center gap-3">
         <Link
           href="/dashboard"
-          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-blue-600"
+          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-navy-light"
         >
           <ChevronLeft size={16} />
           Back
         </Link>
-        <h1 className="text-xl font-extrabold text-slate-900">Batch Scan</h1>
-        <span className="ml-auto rounded-full bg-blue-100 px-3 py-1 text-xs font-extrabold text-blue-700">
+        <h1 className="text-xl font-semibold text-slate-900">Batch Scan</h1>
+        <span className="ml-auto rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
           {items.length} scanned
         </span>
       </div>
@@ -257,11 +257,11 @@ export default function BatchScanPage() {
       )}
 
       {!scanning && items.length === 0 && (
-        <div className="mb-4 rounded-[22px] border border-[#E6EEF8] bg-white p-8 text-center text-sm text-slate-400">
+        <div className="mb-4 rounded-[22px] border border-stone-200/60 bg-white p-8 text-center text-sm text-slate-400">
           No items scanned yet.
           <button
             onClick={startScanner}
-            className="mx-auto mt-3 flex min-h-[44px] items-center gap-2 font-bold text-blue-600"
+            className="mx-auto mt-3 flex min-h-[44px] items-center gap-2 font-bold text-navy-light"
           >
             <ScanLine size={15} />
             Start Scanning
@@ -271,13 +271,13 @@ export default function BatchScanPage() {
 
       {items.length > 0 && (
         <div className="mb-4 space-y-3">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
             Review Items
           </h2>
           {items.map((item) => (
             <div
               key={item.id}
-              className="rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-sm"
+              className="rounded-[22px] border border-stone-200/60 bg-white p-4 shadow-sm"
             >
               <div className="mb-3 flex items-center justify-between">
                 <span className="font-mono text-xs text-slate-400">{item.barcode}</span>
@@ -302,7 +302,7 @@ export default function BatchScanPage() {
                     value={item.productName}
                     onChange={(e) => updateItem(item.id, "productName", e.target.value)}
                     placeholder="Product name"
-                    className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3 py-2 text-base font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -311,14 +311,14 @@ export default function BatchScanPage() {
                       value={item.quantity}
                       onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
                       placeholder="Qty"
-                      className="rounded-xl border border-[#E6EEF8] bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                     />
                     <input
                       type="text"
                       value={item.unit}
                       onChange={(e) => updateItem(item.id, "unit", e.target.value)}
                       placeholder="Unit"
-                      className="rounded-xl border border-[#E6EEF8] bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                     />
                   </div>
                   <input
@@ -326,7 +326,7 @@ export default function BatchScanPage() {
                     value={item.location}
                     onChange={(e) => updateItem(item.id, "location", e.target.value)}
                     placeholder="Storage location (e.g. Fridge)"
-                    className="w-full rounded-xl border border-[#E6EEF8] bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
               )}
@@ -339,7 +339,7 @@ export default function BatchScanPage() {
         {!scanning && (
           <button
             onClick={startScanner}
-            className="flex min-h-[44px] items-center gap-2 rounded-2xl border border-[#E6EEF8] bg-white px-5 text-sm font-bold text-slate-600 shadow-sm"
+            className="flex min-h-[44px] items-center gap-2 rounded-2xl border border-stone-200/60 bg-white px-5 text-sm font-bold text-slate-600 shadow-sm"
           >
             <ScanLine size={16} />
             Scan More
@@ -348,7 +348,7 @@ export default function BatchScanPage() {
         {items.length > 0 && (
           <button
             onClick={handleAddAll}
-            className="flex flex-1 min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-blue-600 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+            className="flex flex-1 min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30"
           >
             <Check size={16} />
             Add All to Pantry ({items.length})

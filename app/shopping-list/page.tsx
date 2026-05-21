@@ -16,6 +16,9 @@ import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home, ShoppingItem, Priority } from "@/lib/types"
 import { Plus, Check } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
+import { SkeletonList } from "@/components/Skeleton"
+import { ui } from "@/lib/ui"
 
 export default function ShoppingListPage() {
   const { showSuccess, showError } = useToast()
@@ -290,7 +293,7 @@ export default function ShoppingListPage() {
         action={
           <button
             onClick={() => setShowAdd(true)}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30"
+            className={ui.btnHeader}
           >
             <Plus size={15} />
             Add
@@ -303,22 +306,16 @@ export default function ShoppingListPage() {
       )}
 
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 animate-pulse rounded-[22px] bg-slate-200" />
-          ))}
-        </div>
+        <SkeletonList count={3} className="h-16" />
       ) : open.length === 0 ? (
-        <div className="mb-4 rounded-[22px] border border-[#E6EEF8] bg-white p-8 text-center text-sm text-slate-400">
-          All done! Nothing left to buy.
-        </div>
+        <EmptyState message="All caught up — nothing left on the shopping list." />
       ) : (
         Object.entries(grouped).map(([homeName, groupItems]) => (
           <div key={homeName} className="mb-5">
-            <h2 className="mb-2 text-xs font-extrabold uppercase tracking-widest text-slate-400">
+            <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
               {homeName}
             </h2>
-            <div className="rounded-[22px] border border-[#E6EEF8] bg-white px-4 shadow-md shadow-slate-900/4">
+            <div className={`${ui.cardInset} px-4`}>
               {groupItems.map((item) => (
                 <ShoppingItemCard
                   key={item.id}
@@ -334,10 +331,10 @@ export default function ShoppingListPage() {
 
       {purchased.length > 0 && (
         <div className="mb-5">
-          <h2 className="mb-2 text-xs font-extrabold uppercase tracking-widest text-slate-400">
+          <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
             Purchased
           </h2>
-          <div className="rounded-[22px] border border-[#E6EEF8] bg-white px-4 opacity-60 shadow-md shadow-slate-900/4">
+          <div className={`${ui.cardInset} px-4 opacity-70`}>
             {purchased.map((item) => (
               <div key={item.id} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
@@ -346,7 +343,7 @@ export default function ShoppingListPage() {
                 <button
                   type="button"
                   onClick={() => handleReopen(item)}
-                  className="shrink-0 rounded-xl border border-[#E6EEF8] px-3 py-2 text-xs font-bold text-blue-600"
+                  className="shrink-0 rounded-xl border border-stone-200/80 px-3 py-2 text-xs font-semibold text-navy-light"
                 >
                   Reopen
                 </button>
@@ -366,14 +363,14 @@ export default function ShoppingListPage() {
               <button
                 type="button"
                 onClick={() => confirmPurchase(false)}
-                className="min-h-[48px] flex-1 rounded-2xl border border-[#E6EEF8] py-3.5 text-sm font-bold text-slate-600"
+                className={`${ui.btnSecondary} min-h-[48px] flex-1 py-3.5`}
               >
                 Just Mark Purchased
               </button>
               <button
                 type="button"
                 onClick={() => confirmPurchase(true)}
-                className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-blue-600/30"
+                className="chef-btn-primary flex min-h-[48px] flex-1 items-center justify-center gap-2 py-3.5"
               >
                 <Check size={15} />
                 Update Pantry
@@ -482,13 +479,11 @@ function AddShoppingModal({
           </p>
         ) : homes.length > 1 ? (
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-              Residence
-            </label>
+            <label className="chef-label">Residence</label>
             <select
               value={homeId}
               onChange={(e) => setHomeId(e.target.value)}
-              className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-base text-slate-900"
+              className="chef-input"
             >
               {homes.map((h) => (
                 <option key={h.id} value={h.id}>
@@ -498,7 +493,7 @@ function AddShoppingModal({
             </select>
           </div>
         ) : (
-          <p className="rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">
+          <p className="rounded-xl border border-stone-200/80 bg-stone-50/50 px-4 py-3 text-sm font-medium text-charcoal">
             {homes[0].name}
           </p>
         )}
@@ -506,19 +501,17 @@ function AddShoppingModal({
         <FormField label="Quantity Needed" value={qtyNeeded} onChange={setQtyNeeded} placeholder="e.g. 2L" />
         <FormField label="Category (optional)" value={category} onChange={setCategory} placeholder="e.g. Dairy" />
         <div>
-          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-            Priority
-          </label>
+          <label className="chef-label">Priority</label>
           <div className="flex gap-2">
             {(["Normal", "Important", "Urgent"] as Priority[]).map((p) => (
               <button
                 key={p}
                 type="button"
                 onClick={() => setPriority(p)}
-                className={`flex-1 rounded-xl border py-2.5 text-xs font-bold transition-colors ${
+                className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
                   priority === p
-                    ? "border-blue-500 bg-blue-600 text-white"
-                    : "border-[#E6EEF8] text-slate-600"
+                    ? "border-navy bg-navy text-ivory"
+                    : "border-stone-200/80 bg-surface text-stone-600"
                 }`}
               >
                 {p}

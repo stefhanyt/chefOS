@@ -7,9 +7,9 @@ import { Home, ShoppingCart, UtensilsCrossed, Settings, Package } from "lucide-r
 const navItems = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/pantry", label: "Pantry", icon: Package },
-  { href: "/shopping-list", label: "Shopping", icon: ShoppingCart },
+  { href: "/shopping-list", label: "Shop", icon: ShoppingCart },
   { href: "/meals", label: "Meals", icon: UtensilsCrossed },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "More", icon: Settings },
 ]
 
 export default function BottomNav() {
@@ -18,34 +18,44 @@ export default function BottomNav() {
   return (
     <nav
       className="
-        fixed bottom-4 left-1/2 z-40
-        flex w-[calc(100%-32px)] max-w-md
-        -translate-x-1/2
-        items-center justify-around
-        rounded-[28px]
-        border border-white/50
-        bg-white/90 backdrop-blur-2xl
-        px-4 py-4
-        shadow-2xl shadow-slate-900/10
+        fixed bottom-0 left-0 right-0 z-40
+        border-t border-stone-200/60
+        bg-surface/95 backdrop-blur-xl
+        shadow-nav
+        pb-[env(safe-area-inset-bottom)]
       "
+      aria-label="Main navigation"
     >
-      {navItems.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(href + "/")
-        return (
-          <Link
-            key={href}
-            href={href}
-            className={`
-              flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-1
-              text-xs font-bold transition-colors
-              ${active ? "text-blue-600" : "text-slate-400 hover:text-slate-600"}
-            `}
-          >
-            <Icon size={20} strokeWidth={active ? 2.5 : 1.8} />
-            <span>{label}</span>
-          </Link>
-        )
-      })}
+      <div className="mx-auto flex max-w-md items-stretch justify-around px-2 pt-1.5 pb-2">
+        {navItems.map(({ href, label, icon: Icon }) => {
+          const active =
+            pathname === href || pathname.startsWith(href + "/")
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`
+                relative flex min-h-[52px] min-w-[56px] flex-1 flex-col items-center justify-center gap-0.5
+                text-[10px] font-semibold tracking-wide transition-colors
+                ${active ? "text-navy" : "text-stone-400"}
+              `}
+            >
+              {active && (
+                <span
+                  className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-gold"
+                  aria-hidden
+                />
+              )}
+              <Icon
+                size={20}
+                strokeWidth={active ? 2 : 1.5}
+                className={active ? "text-navy" : "text-stone-400"}
+              />
+              <span>{label}</span>
+            </Link>
+          )
+        })}
+      </div>
     </nav>
   )
 }

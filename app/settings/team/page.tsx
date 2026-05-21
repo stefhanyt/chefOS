@@ -12,6 +12,7 @@ import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors
 import { useToast } from "@/components/ToastProvider"
 import type { Home, HomeMember, MemberRole } from "@/lib/types"
 import { ChevronLeft, Plus, Trash2 } from "lucide-react"
+import { ui } from "@/lib/ui"
 import SheetModal from "@/components/SheetModal"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
 
@@ -149,7 +150,7 @@ export default function TeamPage() {
     <AppShell>
       <Link
         href="/settings"
-        className="mb-4 flex items-center gap-1.5 text-sm font-bold text-blue-600"
+        className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-navy-light"
       >
         <ChevronLeft size={16} />
         Settings
@@ -162,7 +163,7 @@ export default function TeamPage() {
           <button
             onClick={() => setShowInvite(true)}
             disabled={homes.length === 0}
-            className="flex items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30 disabled:opacity-50"
+            className={`${ui.btnHeader} disabled:opacity-50`}
           >
             <Plus size={15} />
             Invite
@@ -188,11 +189,11 @@ export default function TeamPage() {
               </h2>
 
               {homeMembers.length === 0 ? (
-                <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-4 text-sm text-slate-400">
+                <div className="rounded-[22px] border border-stone-200/60 bg-white p-4 text-sm text-slate-400">
                   No staff assigned.
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-[22px] border border-[#E6EEF8] bg-white shadow-md shadow-slate-900/4">
+                <div className="overflow-hidden rounded-[22px] border border-stone-200/60 bg-white shadow-md shadow-slate-900/4">
                   {homeMembers.map((member, i) => (
                     <div
                       key={member.id}
@@ -280,7 +281,7 @@ export default function TeamPage() {
                 <select
                   value={inviteHomeId}
                   onChange={(e) => setInviteHomeId(e.target.value)}
-                  className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
                 >
                   {homes.map((h) => (
                     <option key={h.id} value={h.id}>
@@ -302,8 +303,8 @@ export default function TeamPage() {
                       onClick={() => setInviteRole(r)}
                       className={`flex-1 rounded-xl border py-2.5 text-xs font-bold capitalize transition-colors ${
                         inviteRole === r
-                          ? "border-blue-500 bg-blue-600 text-white"
-                          : "border-[#E6EEF8] text-slate-600"
+                          ? "border-navy bg-navy text-ivory"
+                          : "border-stone-200/60 text-slate-600"
                       }`}
                     >
                       {r}
@@ -360,7 +361,7 @@ function PermToggle({
   onChange: (v: boolean) => void
 }) {
   return (
-    <label className="flex items-center justify-between rounded-xl border border-[#E6EEF8] px-4 py-3">
+    <label className="flex items-center justify-between rounded-xl border border-stone-200/60 px-4 py-3">
       <span className="text-sm text-slate-700">{label}</span>
       <input
         type="checkbox"
@@ -396,7 +397,7 @@ function Field({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-[#E6EEF8] bg-slate-50 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
       />
     </div>
   )

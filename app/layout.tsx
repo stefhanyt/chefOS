@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
+import { Inter, Cormorant_Garamond } from "next/font/google"
 import "./globals.css"
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration"
 import { ToastProvider } from "@/components/ToastProvider"
@@ -13,12 +13,19 @@ const inter = Inter({
   variable: "--font-inter",
 })
 
+const display = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+  variable: "--font-display",
+})
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#0F2A55",
+  themeColor: "#0F2438",
 }
 
 export const metadata: Metadata = {
@@ -26,7 +33,7 @@ export const metadata: Metadata = {
     default: "ChefOS",
     template: "%s | ChefOS",
   },
-  description: "Private chef command center",
+  description: "Private residence operations — pantry, meals, and household coordination",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -49,7 +56,7 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "black-translucent",
-    "msapplication-TileColor": "#0F2A55",
+    "msapplication-TileColor": "#0F2438",
   },
 }
 
@@ -59,8 +66,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className={`${inter.className} min-h-screen bg-[#F5F8FC] text-slate-900 antialiased`}>
+    <html lang="en" className={`${inter.variable} ${display.variable}`}>
+      <body className={`${inter.className} min-h-screen bg-ivory text-charcoal antialiased`}>
         <ToastProvider>
           <ServiceWorkerRegistration />
           {children}

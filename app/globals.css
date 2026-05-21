@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --color-bg: #f7f5f0;
+    --color-surface: #fffcf8;
+    --color-navy: #0f2438;
+    --color-gold: #b8956b;
+    --color-border: #e8e4dc;
+  }
+
   html {
     -webkit-tap-highlight-color: transparent;
     overflow-x: hidden;
@@ -11,7 +19,7 @@
   body {
     font-family: var(--font-inter), Inter, system-ui, sans-serif;
     overflow-x: hidden;
-    @apply bg-[#F5F8FC] text-slate-900 antialiased;
+    @apply bg-ivory text-charcoal antialiased;
   }
 
   a,
@@ -23,10 +31,35 @@
     touch-action: manipulation;
   }
 
-  /* Prevent iOS input zoom — inputs must render at ≥16px */
   input,
   select,
   textarea {
     font-size: max(16px, 1rem);
+  }
+}
+
+@layer components {
+  .chef-card {
+    @apply rounded-2xl border border-stone-200/60 bg-surface shadow-card;
+  }
+
+  .chef-card-elevated {
+    @apply rounded-2xl border border-stone-200/50 bg-surface shadow-card-lg;
+  }
+
+  .chef-input {
+    @apply w-full rounded-xl border border-stone-200/80 bg-stone-50/50 px-4 py-3 text-base text-charcoal placeholder:text-stone-400 focus:border-gold/50 focus:outline-none focus:ring-2 focus:ring-gold/15;
+  }
+
+  .chef-label {
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500;
+  }
+
+  .chef-btn-primary {
+    @apply inline-flex min-h-[48px] w-full items-center justify-center rounded-xl bg-navy text-sm font-semibold text-ivory shadow-soft transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-500 disabled:shadow-none;
+  }
+
+  .chef-empty {
+    @apply rounded-2xl border border-dashed border-stone-200/80 bg-surface/60 px-8 py-10 text-center;
   }
 }

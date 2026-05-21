@@ -6,8 +6,8 @@ interface Props {
 
 export default function AppShell({ children }: Props) {
   return (
-    <div className="min-h-screen bg-[#F5F8FC]">
-      <main className="mx-auto max-w-md px-4 pt-4 pb-32">
+    <div className="min-h-screen bg-ivory">
+      <main className="mx-auto max-w-md px-5 pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
         {children}
       </main>
       <BottomNav />

@@ -18,40 +18,35 @@ export default function PantryItemCard({
   onRemove,
 }: Props) {
   return (
-    <div
-      className="
-        mb-3 rounded-[22px] border border-[#E6EEF8]
-        bg-white p-4 shadow-md shadow-slate-900/4
-      "
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0 pr-2">
-          <h3 className="font-extrabold text-slate-900 truncate">
+    <div className="chef-card-elevated mb-3 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-base font-semibold text-charcoal">
             {item.name}
           </h3>
           {item.preferred_brand && (
-            <p className="text-xs text-slate-400 mt-0.5">{item.preferred_brand}</p>
+            <p className="mt-0.5 text-xs text-stone-500">{item.preferred_brand}</p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           {onEdit && (
             <button
               type="button"
               onClick={() => onEdit(item)}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 active:bg-slate-100"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-charcoal"
               aria-label="Edit item"
             >
-              <Pencil size={15} />
+              <Pencil size={15} strokeWidth={1.5} />
             </button>
           )}
           {onRemove && (
             <button
               type="button"
               onClick={() => onRemove(item)}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-red-400 active:bg-red-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-700"
               aria-label="Remove item"
             >
-              <Trash2 size={15} />
+              <Trash2 size={15} strokeWidth={1.5} />
             </button>
           )}
           <StatusBadge
@@ -61,40 +56,42 @@ export default function PantryItemCard({
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="text-sm text-slate-500 flex items-center gap-1">
-            <MapPin size={12} />
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-stone-500">
+          <span className="flex items-center gap-1">
+            <MapPin size={12} strokeWidth={1.5} />
             {item.storage_location}
-          </div>
-          <div className="text-xs text-slate-400 bg-slate-50 rounded-lg px-2 py-1">
+          </span>
+          <span className="rounded-lg bg-stone-100/80 px-2 py-0.5 text-xs font-medium text-stone-600">
             {item.category}
-          </div>
+          </span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           <button
+            type="button"
             onClick={() => onQuantityChange?.(item.id, -1)}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-600 active:bg-slate-200"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-stone-50 text-stone-600 active:bg-stone-100"
           >
-            <Minus size={14} />
+            <Minus size={14} strokeWidth={2} />
           </button>
-          <span className="min-w-[3.5rem] text-center text-sm font-extrabold text-slate-900">
+          <span className="min-w-[3.25rem] text-center text-sm font-semibold tabular-nums text-charcoal">
             {item.quantity} {item.unit}
           </span>
           <button
+            type="button"
             onClick={() => onQuantityChange?.(item.id, 1)}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-blue-700 active:bg-blue-200"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-navy/10 bg-navy/5 text-navy active:bg-navy/10"
           >
-            <Plus size={14} />
+            <Plus size={14} strokeWidth={2} />
           </button>
         </div>
       </div>
 
       {item.quantity < item.minimum_quantity && (
-        <div className="mt-2 text-xs text-slate-400">
-          Min: {item.minimum_quantity} {item.unit}
-        </div>
+        <p className="mt-2 text-xs text-stone-500">
+          Minimum {item.minimum_quantity} {item.unit}
+        </p>
       )}
     </div>
   )

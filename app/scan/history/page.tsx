@@ -11,6 +11,9 @@ import { CONFIG_ERROR } from "@/lib/constants"
 import type { BarcodeScan, Home } from "@/lib/types"
 import { ChevronLeft } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
+import { SkeletonList } from "@/components/Skeleton"
+import { ui } from "@/lib/ui"
 
 export default function ScanHistoryPage() {
   const { showError } = useToast()
@@ -52,7 +55,7 @@ export default function ScanHistoryPage() {
     <AppShell>
       <Link
         href="/scan"
-        className="mb-4 flex items-center gap-1.5 text-sm font-bold text-blue-600"
+        className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-navy-light"
       >
         <ChevronLeft size={16} />
         Back to Scan
@@ -68,21 +71,12 @@ export default function ScanHistoryPage() {
       )}
 
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-[22px] bg-slate-200" />
-          ))}
-        </div>
+        <SkeletonList count={3} />
       ) : scans.length === 0 ? (
-        <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-8 text-center text-sm text-slate-400">
-          No scans yet. Use the scanner to add pantry items.
-        </div>
+        <EmptyState message="No scans yet. Use the scanner to add items to the pantry." />
       ) : (
         scans.map((scan) => (
-          <div
-            key={scan.id}
-            className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
-          >
+          <div key={scan.id} className={`${ui.cardElevated} mb-3 p-4`}>
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-sm font-bold text-slate-900">

@@ -6,10 +6,12 @@ import { Plus, UtensilsCrossed, ScanLine, ShoppingCart } from "lucide-react"
 import AppShell from "@/components/AppShell"
 import StatusBadge, { pantryStatusType, mealStatusType } from "@/components/StatusBadge"
 import ErrorBanner from "@/components/ErrorBanner"
+import { SkeletonList } from "@/components/Skeleton"
 import { useToast } from "@/components/ToastProvider"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { ui } from "@/lib/ui"
 import type { Home, PantryItem, ShoppingItem, PreparedMeal } from "@/lib/types"
 
 const CONFIG_ERROR =
@@ -78,9 +80,8 @@ export default function DashboardPage() {
         }
       } catch (err) {
         logSupabaseError("dashboard load", err)
-        const msg = getSupabaseErrorMessage(err)
         setError("Failed to load dashboard. Check your connection and try again.")
-        showError(msg)
+        showError(getSupabaseErrorMessage(err))
       } finally {
         setLoading(false)
       }
@@ -90,91 +91,82 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <section className="rounded-[30px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] p-7 text-white shadow-2xl shadow-blue-500/20">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-extrabold tracking-tight">ChefOS</h1>
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/20 font-bold backdrop-blur-md">
+      <section className={ui.hero}>
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gold-light/90">
+              Command center
+            </p>
+            <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight">
+              ChefOS
+            </h1>
+          </div>
+          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-ivory/25 bg-ivory/10 font-display text-lg font-semibold text-ivory backdrop-blur-sm">
             {userInitial}
           </div>
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-blue-100">
+        <p className="mt-3 max-w-[280px] text-sm leading-relaxed text-ivory/75">
           {loading
-            ? "Loading…"
-            : `Private chef command center · ${homes.length} residence${homes.length !== 1 ? "s" : ""} active`}
+            ? "Loading household status…"
+            : `${homes.length} active residence${homes.length !== 1 ? "s" : ""} · pantry, meals & shopping`}
         </p>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <QuickAction href="/pantry" icon={<Plus size={18} />} label="Pantry Item" />
-          <QuickAction
-            href="/meals"
-            icon={<UtensilsCrossed size={18} />}
-            label="Log Meal"
-          />
-          <QuickAction href="/scan" icon={<ScanLine size={18} />} label="Scan Item" />
-          <QuickAction
-            href="/scan/batch"
-            icon={<ShoppingCart size={18} />}
-            label="Batch Scan"
-          />
+        <div className="mt-6 grid grid-cols-2 gap-2.5">
+          <QuickAction href="/pantry" icon={<Plus size={18} strokeWidth={1.5} />} label="Pantry" />
+          <QuickAction href="/meals" icon={<UtensilsCrossed size={18} strokeWidth={1.5} />} label="Log meal" />
+          <QuickAction href="/scan" icon={<ScanLine size={18} strokeWidth={1.5} />} label="Scan" />
+          <QuickAction href="/scan/batch" icon={<ShoppingCart size={18} strokeWidth={1.5} />} label="Batch" />
         </div>
       </section>
 
       {error && (
-        <ErrorBanner
-          message={error}
-          onRetry={() => setRetryCount((c) => c + 1)}
-        />
+        <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
 
       {loading ? (
-        <div className="mt-7 space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-[22px] bg-slate-200" />
-          ))}
+        <div className="mt-8">
+          <SkeletonList count={4} className="h-[4.5rem]" />
         </div>
       ) : (
         <>
           <Section title="Residences" seeAllHref="/homes">
-            {homes.map((home) => (
-              <Link key={home.id} href={`/homes/${home.id}`}>
-                <div className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4 transition-transform active:scale-[0.98]">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-extrabold text-slate-900">{home.name}</h3>
-                    <StatusBadge
-                      label={
-                        (home.pantry_alert_count ?? 0) > 0
-                          ? "Needs Attention"
-                          : "Active"
-                      }
-                      type={
-                        (home.pantry_alert_count ?? 0) > 0 ? "low" : "blue"
-                      }
-                    />
+            {homes.length === 0 ? (
+              <p className="chef-empty text-sm text-stone-500">
+                No residences yet. Add one under Settings → Homes.
+              </p>
+            ) : (
+              homes.map((home) => (
+                <Link key={home.id} href={`/homes/${home.id}`}>
+                  <div className={`${ui.cardElevated} mb-3 p-4 transition active:scale-[0.99]`}>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-charcoal">{home.name}</h3>
+                      <StatusBadge
+                        label={
+                          (home.pantry_alert_count ?? 0) > 0 ? "Attention" : "In order"
+                        }
+                        type={(home.pantry_alert_count ?? 0) > 0 ? "low" : "ok"}
+                      />
+                    </div>
+                    <p className="mt-2 text-sm text-stone-500">
+                      {home.pantry_alert_count ?? 0} pantry alerts ·{" "}
+                      {home.expiring_meal_count ?? 0} meals · {home.member_count ?? 0} staff
+                    </p>
                   </div>
-                  <p className="mt-2 text-sm text-slate-500">
-                    {home.pantry_alert_count ?? 0} pantry alerts ·{" "}
-                    {home.expiring_meal_count ?? 0} meals expiring ·{" "}
-                    {home.member_count ?? 0} staff
-                  </p>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
           </Section>
 
           {alerts.length > 0 && (
-            <Section title="Pantry Alerts" seeAllHref="/pantry">
+            <Section title="Pantry alerts" seeAllHref="/pantry">
               {alerts.map((item) => (
-                <div
-                  key={item.id}
-                  className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-extrabold text-slate-900">{item.name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {(item.home as Home | undefined)?.name} ·{" "}
-                        {item.storage_location} · {item.quantity} {item.unit}{" "}
-                        remaining
+                <div key={item.id} className={`${ui.cardElevated} mb-3 p-4`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-charcoal">{item.name}</h3>
+                      <p className="mt-1 text-sm text-stone-500">
+                        {(item.home as Home | undefined)?.name} · {item.quantity}{" "}
+                        {item.unit}
                       </p>
                     </div>
                     <StatusBadge
@@ -187,32 +179,29 @@ export default function DashboardPage() {
             </Section>
           )}
 
-          <Section title="Shopping List" seeAllHref="/shopping-list">
-            <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4">
+          <Section title="Shopping" seeAllHref="/shopping-list">
+            <div className={ui.cardInset}>
               {openShopping.length === 0 ? (
-                <p className="py-4 text-center text-sm text-slate-400">
-                  Nothing open — all good!
+                <p className="px-4 py-8 text-center text-sm text-stone-500">
+                  Nothing open — all caught up.
                 </p>
               ) : (
-                <div className="space-y-0">
+                <div className="px-4">
                   {openShopping.slice(0, 4).map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                      className="flex items-center justify-between border-b border-stone-100 py-3.5 last:border-0"
                     >
                       <div>
-                        <p className="font-bold text-slate-900">{item.name}</p>
-                        <p className="text-xs text-slate-400">
-                          {(item.home as Home | undefined)?.name} · by{" "}
-                          {item.added_by_profile?.display_name ?? "—"}
+                        <p className="font-semibold text-charcoal">{item.name}</p>
+                        <p className="text-xs text-stone-500">
+                          {(item.home as Home | undefined)?.name}
                         </p>
                       </div>
                       {item.priority !== "Normal" && (
                         <StatusBadge
                           label={item.priority}
-                          type={
-                            item.priority === "Urgent" ? "critical" : "warning"
-                          }
+                          type={item.priority === "Urgent" ? "critical" : "warning"}
                         />
                       )}
                     </div>
@@ -223,18 +212,14 @@ export default function DashboardPage() {
           </Section>
 
           {expiringSoon.length > 0 && (
-            <Section title="Meals Expiring Soon" seeAllHref="/meals">
+            <Section title="Meals expiring" seeAllHref="/meals">
               {expiringSoon.map((meal) => (
-                <div
-                  key={meal.id}
-                  className="mb-3 rounded-[22px] border border-[#E6EEF8] bg-white p-4 shadow-md shadow-slate-900/4"
-                >
-                  <div className="flex items-center justify-between">
+                <div key={meal.id} className={`${ui.cardElevated} mb-3 p-4`}>
+                  <div className="flex items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-extrabold text-slate-900">{meal.name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {(meal.home as Home | undefined)?.name} · {meal.portions}{" "}
-                        portions
+                      <h3 className="font-semibold text-charcoal">{meal.name}</h3>
+                      <p className="mt-1 text-sm text-stone-500">
+                        {(meal.home as Home | undefined)?.name} · {meal.portions} portions
                       </p>
                     </div>
                     <StatusBadge
@@ -249,10 +234,12 @@ export default function DashboardPage() {
         </>
       )}
 
-      <Link href="/scan">
-        <button className="fixed bottom-28 right-6 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] text-white shadow-2xl shadow-blue-500/40">
-          <ScanLine size={24} />
-        </button>
+      <Link
+        href="/scan"
+        className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-navy text-ivory shadow-soft ring-2 ring-gold/30 transition active:scale-95"
+        aria-label="Scan item"
+      >
+        <ScanLine size={22} strokeWidth={1.5} />
       </Link>
     </AppShell>
   )
@@ -268,16 +255,11 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="mt-7">
+    <section className="mt-8">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-extrabold tracking-tight text-slate-900">
-          {title}
-        </h2>
+        <h2 className={ui.sectionTitle}>{title}</h2>
         {seeAllHref && (
-          <Link
-            href={seeAllHref}
-            className="inline-flex min-h-[44px] items-center text-sm font-bold text-blue-600"
-          >
+          <Link href={seeAllHref} className={ui.link}>
             See all
           </Link>
         )}
@@ -298,10 +280,10 @@ function QuickAction({
 }) {
   return (
     <Link href={href}>
-      <button className="flex w-full flex-col items-center justify-center gap-2 rounded-[22px] bg-white/15 p-5 text-sm font-bold backdrop-blur-md transition-colors active:bg-white/25">
+      <span className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-ivory/15 bg-ivory/10 py-4 text-xs font-semibold text-ivory backdrop-blur-sm transition active:bg-ivory/20">
         {icon}
         {label}
-      </button>
+      </span>
     </Link>
   )
 }

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 
-/** Set true to debug modal layer stacking with red outlines. */
 export const DEBUG_MODAL_LAYERS = false
 
 const debugOutline = DEBUG_MODAL_LAYERS
@@ -16,7 +15,6 @@ interface SheetModalProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  /** Sticky footer (e.g. submit button) — stays above bottom nav and receives clicks */
   footer?: React.ReactNode
 }
 
@@ -48,50 +46,46 @@ export default function SheetModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="sheet-modal-title"
-      data-layer="sheet-modal-root"
     >
-      {/* Backdrop — separate layer so sheet/footer stay clickable */}
       <button
         type="button"
         aria-label="Close dialog"
-        className={`absolute inset-0 z-0 bg-slate-900/40 backdrop-blur-sm ${debugOutline}`}
-        data-layer="sheet-modal-backdrop"
+        className={`absolute inset-0 z-0 bg-navy/30 backdrop-blur-[2px] ${debugOutline}`}
         onClick={onClose}
       />
 
       <div
-        className={`relative z-10 flex max-h-[min(88dvh,100dvh)] w-full max-w-md flex-col rounded-t-[32px] bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-[32px] ${debugOutline}`}
-        data-layer="sheet-modal-panel"
+        className={`relative z-10 flex max-h-[min(88dvh,100dvh)] w-full max-w-md flex-col rounded-t-[28px] border border-stone-200/50 bg-surface shadow-card-lg sm:max-h-[90vh] sm:rounded-[28px] ${debugOutline}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className={`flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4 ${debugOutline}`}
-          data-layer="sheet-modal-header"
+          className={`flex shrink-0 items-center justify-between border-b border-stone-100 px-6 py-5 ${debugOutline}`}
         >
-          <h2 id="sheet-modal-title" className="text-xl font-extrabold text-slate-900">
+          <h2
+            id="sheet-modal-title"
+            className="font-display text-xl font-semibold tracking-tight text-charcoal"
+          >
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-stone-50/80 text-stone-500 transition hover:bg-stone-100"
             aria-label="Close"
           >
-            <X size={16} />
+            <X size={18} strokeWidth={1.5} />
           </button>
         </div>
 
         <div
-          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4 ${debugOutline}`}
-          data-layer="sheet-modal-body"
+          className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5 ${debugOutline}`}
         >
           {children}
         </div>
 
         {footer ? (
           <div
-            className={`shrink-0 border-t border-slate-100 bg-white px-6 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] ${debugOutline}`}
-            data-layer="sheet-modal-footer"
+            className={`shrink-0 border-t border-stone-100 bg-surface/95 px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-sm ${debugOutline}`}
           >
             {footer}
           </div>

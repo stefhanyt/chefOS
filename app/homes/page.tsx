@@ -16,6 +16,9 @@ import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home } from "@/lib/types"
 import { Plus } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
+import { SkeletonList } from "@/components/Skeleton"
+import { ui } from "@/lib/ui"
 
 export default function HomesPage() {
   const { showSuccess, showError } = useToast()
@@ -198,7 +201,7 @@ export default function HomesPage() {
         action={
           <button
             onClick={() => setModalMode("add")}
-            className="flex min-h-[44px] items-center gap-1.5 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-600/30"
+            className={ui.btnHeader}
           >
             <Plus size={15} />
             Add Home
@@ -211,18 +214,9 @@ export default function HomesPage() {
       )}
 
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-36 animate-pulse rounded-[26px] bg-slate-200"
-            />
-          ))}
-        </div>
+        <SkeletonList count={2} className="h-36" />
       ) : homes.length === 0 ? (
-        <div className="rounded-[22px] border border-[#E6EEF8] bg-white p-8 text-center text-sm text-slate-400">
-          No residences yet. Add your first home to get started.
-        </div>
+        <EmptyState message="No residences yet. Add your first home to begin household operations." />
       ) : (
         homes.map((home) => (
           <HomeCard
@@ -306,7 +300,7 @@ function HomeFormModal({
             <button
               type="button"
               onClick={() => onArchive(home)}
-              className="w-full rounded-2xl border border-red-200 py-3 text-sm font-bold text-red-600"
+              className="w-full rounded-xl border border-rose-200/80 py-3 text-sm font-semibold text-rose-800"
             >
               Archive Residence
             </button>

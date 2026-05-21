@@ -13,85 +13,72 @@ export default function MealCard({ meal, onEdit, onRemove }: Props) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const diffDays = Math.floor(
-    (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
   )
 
   const expiryLabel =
     diffDays < 0
       ? `Expired ${Math.abs(diffDays)}d ago`
       : diffDays === 0
-      ? "Expires today"
-      : `Expires in ${diffDays}d`
+        ? "Expires today"
+        : `Expires in ${diffDays}d`
+
+  const expiryTone =
+    meal.status === "Expired"
+      ? "text-rose-700"
+      : meal.status === "Use Soon"
+        ? "text-amber-800"
+        : "text-stone-600"
 
   return (
-    <div
-      className="
-        mb-3 rounded-[22px] border border-[#E6EEF8]
-        bg-white p-4 shadow-md shadow-slate-900/4
-      "
-    >
-      <div className="flex items-start justify-between">
-        <h3 className="font-extrabold text-slate-900">{meal.name}</h3>
-        <div className="flex shrink-0 items-center gap-1">
+    <div className="chef-card-elevated mb-3 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-base font-semibold text-charcoal">{meal.name}</h3>
+        <div className="flex shrink-0 items-center gap-0.5">
           {onEdit && (
             <button
               type="button"
               onClick={() => onEdit(meal)}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 active:bg-slate-100"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100"
               aria-label="Edit meal"
             >
-              <Pencil size={15} />
+              <Pencil size={15} strokeWidth={1.5} />
             </button>
           )}
           {onRemove && (
             <button
               type="button"
               onClick={() => onRemove(meal)}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-red-400 active:bg-red-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-700"
               aria-label="Remove meal"
             >
-              <Trash2 size={15} />
+              <Trash2 size={15} strokeWidth={1.5} />
             </button>
           )}
-          <StatusBadge
-            label={meal.status}
-            type={mealStatusType(meal.status)}
-          />
+          <StatusBadge label={meal.status} type={mealStatusType(meal.status)} />
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
         <span className="flex items-center gap-1">
-          <Home size={11} />
+          <Home size={11} strokeWidth={1.5} />
           {meal.home?.name ?? "—"}
         </span>
         <span className="flex items-center gap-1">
-          <Layers size={11} />
+          <Layers size={11} strokeWidth={1.5} />
           {meal.portions} portions
         </span>
         <span className="flex items-center gap-1">
-          <Flame size={11} />
+          <Flame size={11} strokeWidth={1.5} />
           {meal.storage_location}
         </span>
       </div>
 
-      <div
-        className={`
-          mt-3 text-xs font-semibold
-          ${meal.status === "Expired"
-            ? "text-red-600"
-            : meal.status === "Use Soon"
-            ? "text-amber-600"
-            : "text-green-600"
-          }
-        `}
-      >
-        {expiryLabel}
-      </div>
+      <p className={`mt-2.5 text-xs font-medium ${expiryTone}`}>{expiryLabel}</p>
 
       {meal.reheating_instructions && (
-        <p className="mt-2 text-xs text-slate-400 italic">
-          ↻ {meal.reheating_instructions}
+        <p className="mt-2 text-xs italic text-stone-500">
+          {meal.reheating_instructions}
         </p>
       )}
     </div>

@@ -29,6 +29,8 @@ import {
   Pencil,
 } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
+import { SkeletonList } from "@/components/Skeleton"
+import { ui } from "@/lib/ui"
 
 export default function HomeDetailPage({
   params,
@@ -152,7 +154,7 @@ export default function HomeDetailPage({
       {/* BACK */}
       <Link
         href="/homes"
-        className="mb-4 flex items-center gap-1.5 text-sm font-bold text-blue-600"
+        className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-navy-light"
       >
         <ChevronLeft size={16} />
         All Homes
@@ -163,30 +165,26 @@ export default function HomeDetailPage({
       )}
 
       {loading || !home ? (
-        <div className="space-y-4">
-          <div className="h-48 animate-pulse rounded-[26px] bg-slate-200" />
-          <div className="h-24 animate-pulse rounded-[22px] bg-slate-200" />
-          <div className="h-24 animate-pulse rounded-[22px] bg-slate-200" />
-        </div>
+        <SkeletonList count={3} className="h-28" />
       ) : (
         <>
           {/* HOME HEADER */}
-          <div className="relative mb-6 rounded-[26px] bg-gradient-to-br from-[#0F2A55] to-[#2563EB] p-6 text-white shadow-2xl shadow-blue-500/20">
+          <div className={`relative mb-7 ${ui.hero}`}>
             <button
               type="button"
               onClick={() => setShowEdit(true)}
-              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white"
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-ivory/20 bg-ivory/10 text-ivory"
               aria-label="Edit residence"
             >
               <Pencil size={16} />
             </button>
-            <h1 className="text-2xl font-extrabold pr-12">{home.name}</h1>
-            <div className="mt-1 flex items-center gap-1.5 text-sm text-blue-200">
+            <h1 className="pr-12 font-display text-2xl font-semibold">{home.name}</h1>
+            <div className="mt-1 flex items-center gap-1.5 text-sm text-ivory/70">
               <MapPin size={13} />
               {home.location}
             </div>
             {home.notes && (
-              <p className="mt-3 text-sm leading-relaxed text-blue-100">
+              <p className="mt-3 text-sm leading-relaxed text-ivory/75">
                 {home.notes}
               </p>
             )}
@@ -200,10 +198,10 @@ export default function HomeDetailPage({
               ].map(({ label, value }) => (
                 <div
                   key={label}
-                  className="rounded-xl bg-white/15 p-2 text-center backdrop-blur-sm"
+                  className="rounded-xl border border-ivory/15 bg-ivory/10 p-2 text-center backdrop-blur-sm"
                 >
-                  <div className="text-xl font-extrabold">{value}</div>
-                  <div className="mt-0.5 text-xs text-blue-200">{label}</div>
+                  <div className="font-display text-xl font-semibold">{value}</div>
+                  <div className="mt-0.5 text-xs text-ivory/60">{label}</div>
                 </div>
               ))}
             </div>
@@ -232,10 +230,10 @@ export default function HomeDetailPage({
               {alerts.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                  className={`flex items-center justify-between ${ui.divider} py-3.5`}
                 >
                   <div>
-                    <p className="text-sm font-bold text-slate-900">
+                    <p className="text-sm font-semibold text-charcoal">
                       {item.name}
                     </p>
                     <p className="text-xs text-slate-400">
@@ -263,10 +261,10 @@ export default function HomeDetailPage({
               shopping.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                  className={`flex items-center justify-between ${ui.divider} py-3.5`}
                 >
                   <div>
-                    <p className="text-sm font-bold text-slate-900">
+                    <p className="text-sm font-semibold text-charcoal">
                       {item.name}
                     </p>
                     <p className="text-xs text-slate-400">
@@ -299,10 +297,10 @@ export default function HomeDetailPage({
               meals.map((meal) => (
                 <div
                   key={meal.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                  className={`flex items-center justify-between ${ui.divider} py-3.5`}
                 >
                   <div>
-                    <p className="text-sm font-bold text-slate-900">
+                    <p className="text-sm font-semibold text-charcoal">
                       {meal.name}
                     </p>
                     <p className="text-xs text-slate-400">
@@ -330,10 +328,10 @@ export default function HomeDetailPage({
               members.map((m) => (
                 <div
                   key={m.id}
-                  className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                  className={`flex items-center justify-between ${ui.divider} py-3.5`}
                 >
                   <div>
-                    <p className="text-sm font-bold text-slate-900">
+                    <p className="text-sm font-semibold text-charcoal">
                       {m.profile?.display_name ?? "Unknown"}
                     </p>
                     <p className="text-xs text-slate-400">
@@ -444,20 +442,20 @@ function Section({
   return (
     <div className="mb-5">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-base font-extrabold text-slate-900">
+        <h2 className={`flex items-center gap-1.5 ${ui.sectionTitle}`}>
           {icon}
           {title}
         </h2>
         {seeAllHref && (
           <Link
             href={seeAllHref}
-            className="inline-flex min-h-[44px] items-center text-xs font-bold text-blue-600"
+            className={`inline-flex min-h-[44px] items-center ${ui.link}`}
           >
             See all
           </Link>
         )}
       </div>
-      <div className="rounded-[22px] border border-[#E6EEF8] bg-white px-4 shadow-md shadow-slate-900/4">
+      <div className={`${ui.cardInset} px-4`}>
         {children}
       </div>
     </div>
@@ -466,11 +464,11 @@ function Section({
 
 function InfoBlock({ title, value }: { title: string; value: string }) {
   return (
-    <div className="mb-4 rounded-[18px] border border-[#E6EEF8] bg-white p-4 shadow-sm">
-      <p className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-400">
+    <div className={`${ui.card} mb-4 p-4`}>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-500">
         {title}
       </p>
-      <p className="text-sm text-slate-700">{value}</p>
+      <p className="text-sm leading-relaxed text-stone-600">{value}</p>
     </div>
   )
 }
