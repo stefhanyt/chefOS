@@ -9,6 +9,8 @@ type Props = {
   title?: string
   trailing?: React.ReactNode
   className?: string
+  /** Called before navigation (e.g. release camera on scan pages). */
+  onBeforeBack?: () => void
 }
 
 /**
@@ -22,6 +24,7 @@ export default function MobileTopBar({
   title,
   trailing,
   className = "",
+  onBeforeBack,
 }: Props) {
   const backClassName =
     "mobile-header-button -ml-1 inline-flex shrink-0 items-center justify-center gap-0.5 rounded-xl px-1 text-sm font-bold text-navy-light"
@@ -32,12 +35,23 @@ export default function MobileTopBar({
       role="banner"
     >
       {onBack ? (
-        <button type="button" onClick={onBack} className={backClassName}>
+        <button
+          type="button"
+          onClick={() => {
+            onBeforeBack?.()
+            onBack()
+          }}
+          className={backClassName}
+        >
           <ChevronLeft size={18} strokeWidth={2.5} aria-hidden />
           <span>{backLabel}</span>
         </button>
       ) : (
-        <Link href={backHref ?? "/dashboard"} className={backClassName}>
+        <Link
+          href={backHref ?? "/dashboard"}
+          className={backClassName}
+          onClick={() => onBeforeBack?.()}
+        >
           <ChevronLeft size={18} strokeWidth={2.5} aria-hidden />
           <span>{backLabel}</span>
         </Link>

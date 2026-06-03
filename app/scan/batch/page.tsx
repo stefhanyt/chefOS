@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import MobileTopBar from "@/components/MobileTopBar"
@@ -19,6 +19,7 @@ import {
 } from "@/lib/scan-product"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
+import { useBarcodeScanner } from "@/lib/use-barcode-scanner"
 import type { Home } from "@/lib/types"
 
 interface ScannedItem {
@@ -36,9 +37,7 @@ interface ScannedItem {
 
 export default function BatchScanPage() {
   const { showSuccess, showError } = useToast()
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const readerRef = useRef<any>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const { videoRef, start: startCamera, release: releaseCamera } = useBarcodeScanner()
   const scannedCodes = useRef<Set<string>>(new Set())
 
   const [items, setItems] = useState<ScannedItem[]>([])
@@ -51,8 +50,18 @@ export default function BatchScanPage() {
 
   useEffect(() => {
     loadHomes()
-    startScanner()
-    return () => stopScanner()
+  }, [])
+
+  const handleScannerError = useCallback((e: unknown) => {
+    const err = e as { name?: string; message?: string }
+    if (err?.name === "NotAllowedError" || err?.message?.toLowerCase().includes("permission")) {
+      setErrorKind("permission")
+      setErrorMsg("Camera access denied. On iPhone: Settings → Safari → Camera → Allow.")
+    } else {
+      setErrorKind("camera")
+      setErrorMsg("Camera unavailable.")
+    }
+    setScanning(false)
   }, [])
 
   async function loadHomes() {
@@ -73,50 +82,14 @@ export default function BatchScanPage() {
     setHomeId(list[0]?.id ?? "")
   }
 
-  async function startScanner() {
-    setScanning(true)
-    setErrorKind("none")
-    setErrorMsg("")
-    try {
-      const { BrowserMultiFormatReader } = await import("@zxing/browser")
-      const reader = new BrowserMultiFormatReader()
-      readerRef.current = reader
-
-      const constraints: MediaStreamConstraints = {
-        video: { facingMode: { ideal: "environment" } },
-      }
-
-      if (videoRef.current) {
-        reader.decodeFromConstraints(constraints, videoRef.current, async (result) => {
-          if (result) {
-            const code = result.getText()
-            if (!scannedCodes.current.has(code)) {
-              scannedCodes.current.add(code)
-              await addItem(code)
-            }
-          }
-        })
-      }
-    } catch (e: any) {
-      if (e?.name === "NotAllowedError" || e?.message?.toLowerCase().includes("permission")) {
-        setErrorKind("permission")
-        setErrorMsg("Camera access denied. On iPhone: Settings → Safari → Camera → Allow.")
-      } else {
-        setErrorKind("camera")
-        setErrorMsg("Camera unavailable.")
-      }
-      setScanning(false)
-    }
+  function stopScanner() {
+    setScanning(false)
   }
 
-  function stopScanner() {
-    try {
-      readerRef.current?.reset()
-    } catch {}
-    try {
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-    } catch {}
-    setScanning(false)
+  function beginScanning() {
+    setErrorKind("none")
+    setErrorMsg("")
+    setScanning(true)
   }
 
   async function addItem(code: string) {
@@ -186,7 +159,28 @@ export default function BatchScanPage() {
     setItems((prev) => prev.filter((i) => i.id !== id))
   }
 
+  useEffect(() => {
+    if (!scanning || saved) {
+      releaseCamera()
+      return
+    }
+
+    startCamera({
+      continuous: true,
+      onDetected: async (code) => {
+        if (!scannedCodes.current.has(code)) {
+          scannedCodes.current.add(code)
+          await addItem(code)
+        }
+      },
+      onError: handleScannerError,
+    })
+
+    return () => releaseCamera()
+  }, [scanning, saved, startCamera, releaseCamera, handleScannerError])
+
   async function handleAddAll() {
+    stopScanner()
     const supabase = createClient()
     if (!supabase) {
       showError(CONFIG_ERROR)
@@ -254,6 +248,7 @@ export default function BatchScanPage() {
       })),
     )
 
+    setScanning(false)
     setSaved(true)
     showSuccess(`${valid.length} items saved to pantry`)
   }
@@ -296,6 +291,7 @@ export default function BatchScanPage() {
     <AppShell>
       <MobileTopBar
         backHref="/dashboard"
+        onBeforeBack={releaseCamera}
         title="Batch Scan"
         trailing={
           <span className="mobile-header-button inline-flex items-center justify-center rounded-full bg-blue-100 px-3 text-xs font-semibold text-blue-700">
@@ -362,7 +358,7 @@ export default function BatchScanPage() {
           No items scanned yet.
           <button
             type="button"
-            onClick={startScanner}
+            onClick={beginScanning}
             className="mx-auto mt-3 flex min-h-[44px] items-center gap-2 font-bold text-navy-light"
           >
             <ScanLine size={15} />
@@ -442,7 +438,7 @@ export default function BatchScanPage() {
           {!scanning && (
             <button
               type="button"
-              onClick={startScanner}
+              onClick={beginScanning}
               className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
             >
               <ScanLine size={16} />

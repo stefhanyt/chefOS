@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import MobileTopBar from "@/components/MobileTopBar"
@@ -20,6 +20,7 @@ import {
 } from "@/lib/scan-product"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
+import { useBarcodeScanner } from "@/lib/use-barcode-scanner"
 import type { Home } from "@/lib/types"
 
 type ScanState = "scanning" | "looking_up" | "review" | "saved"
@@ -27,11 +28,9 @@ type ErrorKind = "none" | "permission" | "camera" | "lookup"
 
 export default function ScanPage() {
   const { showSuccess, showError } = useToast()
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const { videoRef, start: startCamera, release: releaseCamera } = useBarcodeScanner()
   const fileRef = useRef<HTMLInputElement>(null)
   const didScanRef = useRef(false)
-  const readerRef = useRef<any>(null)
-  const streamRef = useRef<MediaStream | null>(null)
 
   const [scanState, setScanState] = useState<ScanState>("scanning")
   const [lookupSource, setLookupSource] = useState<ProductLookupSource>("manual")
@@ -50,8 +49,24 @@ export default function ScanPage() {
 
   useEffect(() => {
     loadHomes()
-    startScanner()
-    return () => stopScanner()
+  }, [])
+
+  const handleScannerError = useCallback((e: unknown) => {
+    const err = e as { name?: string; message?: string }
+    if (
+      err?.name === "NotAllowedError" ||
+      err?.message?.toLowerCase().includes("permission")
+    ) {
+      setErrorKind("permission")
+      setErrorMsg(
+        "Camera access was denied. On iPhone: Settings → Safari → Camera → Allow.",
+      )
+    } else {
+      setErrorKind("camera")
+      setErrorMsg("Camera unavailable. You can enter a barcode manually below.")
+    }
+    setLookupSource("manual")
+    setScanState("review")
   }, [])
 
   async function loadHomes() {
@@ -70,55 +85,6 @@ export default function ScanPage() {
     const list = (data as Home[]) ?? []
     setHomes(list)
     setHomeId(list[0]?.id ?? "")
-  }
-
-  async function startScanner() {
-    didScanRef.current = false
-    try {
-      const { BrowserMultiFormatReader } = await import("@zxing/browser")
-      const reader = new BrowserMultiFormatReader()
-      readerRef.current = reader
-
-      const constraints: MediaStreamConstraints = {
-        video: { facingMode: { ideal: "environment" } },
-      }
-
-      if (videoRef.current) {
-        reader.decodeFromConstraints(constraints, videoRef.current, async (result) => {
-          if (result && !didScanRef.current) {
-            didScanRef.current = true
-            const code = result.getText()
-            setBarcode(code)
-            stopScanner()
-            await handleBarcode(code)
-          }
-        })
-      }
-    } catch (e: any) {
-      if (
-        e?.name === "NotAllowedError" ||
-        e?.message?.toLowerCase().includes("permission")
-      ) {
-        setErrorKind("permission")
-        setErrorMsg(
-          "Camera access was denied. On iPhone: Settings → Safari → Camera → Allow.",
-        )
-      } else {
-        setErrorKind("camera")
-        setErrorMsg("Camera unavailable. You can enter a barcode manually below.")
-      }
-      setLookupSource("manual")
-      setScanState("review")
-    }
-  }
-
-  function stopScanner() {
-    try {
-      readerRef.current?.reset()
-    } catch {}
-    try {
-      streamRef.current?.getTracks().forEach((t) => t.stop())
-    } catch {}
   }
 
   async function handleBarcode(code: string) {
@@ -164,9 +130,31 @@ export default function ScanPage() {
     }
   }
 
+  useEffect(() => {
+    if (scanState !== "scanning") {
+      releaseCamera()
+      return
+    }
+
+    didScanRef.current = false
+    startCamera({
+      continuous: false,
+      onDetected: async (code) => {
+        if (didScanRef.current) return
+        didScanRef.current = true
+        setBarcode(code)
+        await handleBarcode(code)
+      },
+      onError: handleScannerError,
+    })
+
+    return () => releaseCamera()
+  }, [scanState, startCamera, releaseCamera, handleScannerError])
+
   async function handleImageFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    releaseCamera()
     setScanState("looking_up")
     try {
       const { BrowserMultiFormatReader } = await import("@zxing/browser")
@@ -260,6 +248,7 @@ export default function ScanPage() {
   }
 
   function resetForAnotherScan() {
+    releaseCamera()
     setScanState("scanning")
     setProductName("")
     setBrand("")
@@ -272,13 +261,13 @@ export default function ScanPage() {
     setLookupSource("manual")
     setErrorKind("none")
     setErrorMsg("")
-    startScanner()
   }
 
   return (
     <AppShell>
       <MobileTopBar
         backHref="/dashboard"
+        onBeforeBack={releaseCamera}
         title="Scan item"
         trailing={
           <Link
@@ -360,7 +349,7 @@ export default function ScanPage() {
           <button
             type="button"
             onClick={() => {
-              stopScanner()
+              releaseCamera()
               setLookupSource("manual")
               setQuantity("1")
               setScanState("review")

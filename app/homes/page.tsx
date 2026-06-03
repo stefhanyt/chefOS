@@ -20,6 +20,7 @@ import ErrorBanner from "@/components/ErrorBanner"
 import EmptyState from "@/components/EmptyState"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
+import ArchiveResidenceModal from "@/components/ArchiveResidenceModal"
 
 export default function HomesPage() {
   const router = useRouter()
@@ -30,6 +31,8 @@ export default function HomesPage() {
   const [retryCount, setRetryCount] = useState(0)
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null)
   const [editingHome, setEditingHome] = useState<Home | null>(null)
+  const [archiveTarget, setArchiveTarget] = useState<Home | null>(null)
+  const [archiving, setArchiving] = useState(false)
 
   async function loadHomes() {
     setLoading(true)
@@ -176,25 +179,27 @@ export default function HomesPage() {
     closeModal()
   }
 
-  async function handleArchiveHome(home: Home) {
-    if (!confirm(`Archive "${home.name}"? You can restore it later from the database.`))
-      return
+  async function confirmArchiveHome() {
+    if (!archiveTarget) return
     const supabase = createClient()
     if (!supabase) {
       showError(CONFIG_ERROR)
       return
     }
+    setArchiving(true)
     const { error } = await supabase
       .from("homes")
       .update({ archived_at: new Date().toISOString() })
-      .eq("id", home.id)
+      .eq("id", archiveTarget.id)
+    setArchiving(false)
     if (error) {
       logSupabaseError("homes archive", error)
       showError(getSupabaseErrorMessage(error))
       return
     }
-    setHomes((prev) => prev.filter((h) => h.id !== home.id))
+    setHomes((prev) => prev.filter((h) => h.id !== archiveTarget.id))
     showSuccess("Residence archived")
+    setArchiveTarget(null)
     closeModal()
   }
 
@@ -253,9 +258,19 @@ export default function HomesPage() {
           home={editingHome}
           onClose={closeModal}
           onSave={handleSaveHome}
-          onArchive={modalMode === "edit" ? handleArchiveHome : undefined}
+          onRequestArchive={
+            modalMode === "edit" ? (home) => setArchiveTarget(home) : undefined
+          }
         />
       )}
+
+      <ArchiveResidenceModal
+        open={Boolean(archiveTarget)}
+        residenceName={archiveTarget?.name ?? ""}
+        archiving={archiving}
+        onClose={() => !archiving && setArchiveTarget(null)}
+        onConfirm={confirmArchiveHome}
+      />
     </AppShell>
   )
 }
@@ -265,7 +280,7 @@ function HomeFormModal({
   home,
   onClose,
   onSave,
-  onArchive,
+  onRequestArchive,
 }: {
   mode: "add" | "edit"
   home: Home | null
@@ -274,7 +289,7 @@ function HomeFormModal({
     form: { name: string; location: string; notes: string },
     existingId?: string,
   ) => void | Promise<void>
-  onArchive?: (home: Home) => void | Promise<void>
+  onRequestArchive?: (home: Home) => void
 }) {
   const formId = "home-form"
   const [name, setName] = useState(home?.name ?? "")
@@ -313,10 +328,10 @@ function HomeFormModal({
       title={mode === "edit" ? "Edit Residence" : "Add Residence"}
       footer={
         <div className="space-y-3">
-          {mode === "edit" && home && onArchive && (
+          {mode === "edit" && home && onRequestArchive && (
             <button
               type="button"
-              onClick={() => onArchive(home)}
+              onClick={() => onRequestArchive(home)}
               className="w-full min-h-[44px] rounded-xl border border-rose-200/80 py-3 text-sm font-semibold text-rose-800"
             >
               Archive Residence
