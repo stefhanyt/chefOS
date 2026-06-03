@@ -16,6 +16,8 @@ import {
 import {
   MENU_SLOT_TO_CATEGORY,
   REPERTOIRE_MEAL_CATEGORIES,
+  DEFAULT_REPERTOIRE_MEAL_CATEGORY,
+  dishRepertoireCategoryLabel,
 } from "@/lib/repertoire-constants"
 import { MENU_DAYS, weekLabel } from "@/lib/menu-utils"
 import type { DishIngredient, DishLibraryItem, Home } from "@/lib/types"
@@ -145,8 +147,8 @@ export function DishAddToMenuModal({
   const [homeId, setHomeId] = useState(defaultHome)
   const [weekOffset, setWeekOffset] = useState(0)
   const [dayOfWeek, setDayOfWeek] = useState(0)
-  const [mealSlot, setMealSlot] = useState(
-    dish.meal_category ?? dish.category ?? "Dinner",
+  const [category, setCategory] = useState(
+    dishRepertoireCategoryLabel(dish) || DEFAULT_REPERTOIRE_MEAL_CATEGORY,
   )
   const [portions, setPortions] = useState(dish.default_servings ?? 4)
   const [addShopping, setAddShopping] = useState(true)
@@ -174,7 +176,7 @@ export function DishAddToMenuModal({
     if (!homeId && homes[0]) setHomeId(homes[0].id)
   }, [homes, homeId])
 
-  const menuCatHint = MENU_SLOT_TO_CATEGORY[mealSlot] ?? "Mains"
+  const menuCatHint = MENU_SLOT_TO_CATEGORY[category] ?? "Mains"
   const canSubmit = Boolean(homeId) && !saving
 
   async function handleSubmit(e: React.FormEvent) {
@@ -193,7 +195,7 @@ export function DishAddToMenuModal({
         homeId,
         dish,
         dayOfWeek,
-        menuCategory: mealSlot,
+        menuCategory: category,
         portions,
         weekOffset,
       })
@@ -271,10 +273,10 @@ export function DishAddToMenuModal({
           </select>
         </div>
         <div>
-          <label className={ui.label}>Meal slot</label>
+          <label className={ui.label}>Repertoire category</label>
           <select
-            value={mealSlot}
-            onChange={(e) => setMealSlot(e.target.value)}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
             className={ui.input}
           >
             {REPERTOIRE_MEAL_CATEGORIES.map((c) => (
@@ -282,6 +284,14 @@ export function DishAddToMenuModal({
                 {c} → menu {MENU_SLOT_TO_CATEGORY[c] ?? "Mains"}
               </option>
             ))}
+            {!REPERTOIRE_MEAL_CATEGORIES.includes(
+              category as (typeof REPERTOIRE_MEAL_CATEGORIES)[number],
+            ) &&
+              category && (
+                <option value={category}>
+                  {category} → menu {MENU_SLOT_TO_CATEGORY[category] ?? "Mains"}
+                </option>
+              )}
           </select>
         </div>
         <div>

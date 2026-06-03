@@ -40,6 +40,9 @@ import {
 import {
   REPERTOIRE_DIETARY_TAGS,
   REPERTOIRE_MEAL_CATEGORIES,
+  DEFAULT_REPERTOIRE_MEAL_CATEGORY,
+  dishMatchesRepertoireCategory,
+  dishRepertoireCategoryLabel,
 } from "@/lib/repertoire-constants"
 import { useHomeAccess } from "@/hooks/useHomeAccess"
 import Link from "next/link"
@@ -116,10 +119,8 @@ export default function DishRepertoirePage() {
       next = next.filter((d) => d.is_active !== false)
     }
     if (categoryFilter !== "All") {
-      next = next.filter(
-        (d) =>
-          (d.meal_category ?? d.category ?? "").toLowerCase() ===
-          categoryFilter.toLowerCase(),
+      next = next.filter((d) =>
+        dishMatchesRepertoireCategory(d, categoryFilter),
       )
     }
     if (tagFilter !== "All") {
@@ -137,7 +138,7 @@ export default function DishRepertoirePage() {
           d.name.toLowerCase().includes(q) ||
           (d.description ?? "").toLowerCase().includes(q) ||
           (d.cuisine_style ?? "").toLowerCase().includes(q) ||
-          (d.meal_category ?? d.category ?? "").toLowerCase().includes(q) ||
+          dishRepertoireCategoryLabel(d).toLowerCase().includes(q) ||
           (d.ingredients ?? "").toLowerCase().includes(q),
       )
     }
@@ -283,7 +284,7 @@ export default function DishRepertoirePage() {
           onClick={() => setCategoryFilter("All")}
           className={categoryFilter === "All" ? ui.chipActive : ui.chip}
         >
-          All meals
+          All categories
         </button>
         {REPERTOIRE_MEAL_CATEGORIES.map((c) => (
           <button
@@ -377,7 +378,7 @@ export default function DishRepertoirePage() {
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-slate-400">
-                    {dish.meal_category ?? dish.category}
+                    {dishRepertoireCategoryLabel(dish) || "Other"}
                     {dish.cuisine_style ? ` · ${dish.cuisine_style}` : ""}
                   </p>
                 </div>

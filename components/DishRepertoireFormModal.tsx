@@ -8,6 +8,7 @@ import {
   INGREDIENT_CATEGORIES,
   REPERTOIRE_DIETARY_TAGS,
   REPERTOIRE_MEAL_CATEGORIES,
+  DEFAULT_REPERTOIRE_MEAL_CATEGORY,
 } from "@/lib/repertoire-constants"
 import type { DishIngredientInput, DishRepertoireInput } from "@/lib/dish-repertoire"
 import { parseLegacyIngredients } from "@/lib/dish-repertoire"
@@ -20,7 +21,7 @@ function dishToInput(dish?: DishLibraryItem): DishRepertoireInput {
     return {
       name: "",
       description: "",
-      meal_category: "Dinner",
+      meal_category: DEFAULT_REPERTOIRE_MEAL_CATEGORY,
       cuisine_style: "",
       dietary_tags: [],
       instructions: "",
@@ -46,7 +47,8 @@ function dishToInput(dish?: DishLibraryItem): DishRepertoireInput {
   return {
     name: dish.name,
     description: dish.description ?? "",
-    meal_category: dish.meal_category ?? dish.category ?? "Dinner",
+    meal_category:
+      dish.meal_category ?? dish.category ?? DEFAULT_REPERTOIRE_MEAL_CATEGORY,
     cuisine_style: dish.cuisine_style ?? "",
     dietary_tags:
       dish.dietary_tags?.length ? dish.dietary_tags : dish.tags ?? [],
@@ -158,7 +160,7 @@ export default function DishRepertoireFormModal({
         />
 
         <div>
-          <label className={ui.label}>Meal Category</label>
+          <label className={ui.label}>Repertoire category</label>
           <select
             value={form.meal_category}
             onChange={(e) =>
@@ -171,6 +173,12 @@ export default function DishRepertoireFormModal({
                 {c}
               </option>
             ))}
+            {!REPERTOIRE_MEAL_CATEGORIES.includes(
+              form.meal_category as (typeof REPERTOIRE_MEAL_CATEGORIES)[number],
+            ) &&
+              form.meal_category && (
+                <option value={form.meal_category}>{form.meal_category}</option>
+              )}
           </select>
         </div>
 
