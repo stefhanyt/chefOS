@@ -5,6 +5,9 @@ import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import AddMenuDishModal from "@/components/AddMenuDishModal"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
+import NoHomesBanner from "@/components/NoHomesBanner"
+import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
@@ -25,13 +28,12 @@ import {
   weekLabel,
 } from "@/lib/menu-utils"
 import { useToast } from "@/components/ToastProvider"
+import { CONFIG_ERROR } from "@/lib/constants"
 import type { DishLibraryItem, Home, MenuItemRow } from "@/lib/types"
 import { ChevronLeft, ChevronRight, X, Check } from "lucide-react"
 import { ui } from "@/lib/ui"
 
 const PORTIONS = [1, 2, 3, 4, 5, 6, 8, 10, 12]
-const CONFIG_ERROR =
-  "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
 
 export default function MenuPage() {
   const { showSuccess, showError } = useToast()
@@ -48,6 +50,7 @@ export default function MenuPage() {
   const [dishLibrary, setDishLibrary] = useState<DishLibraryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
 
   const dates = getWeekDates(weekOffset)
   const weekStart = getWeekStart(weekOffset)
@@ -125,7 +128,7 @@ export default function MenuPage() {
       }
     }
     init()
-  }, [])
+  }, [retryCount])
 
   useEffect(() => {
     if (homeId) loadMenu()
@@ -220,10 +223,16 @@ export default function MenuPage() {
     dishName: string,
     dishId?: string | null,
   ) {
-    if (isDuplicateMenuEntry(day, cat, dishName, dishId)) return
+    if (isDuplicateMenuEntry(day, cat, dishName, dishId)) {
+      showError("That dish is already on this day.")
+      return
+    }
 
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const mid = await resolveMenuId()
     if (!mid) return
 
@@ -273,7 +282,10 @@ export default function MenuPage() {
 
   async function removeDish(entryId: string, day: number, cat: string) {
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase.from("menu_items").delete().eq("id", entryId)
     if (error) {
       logSupabaseError("menu item delete", error)
@@ -289,7 +301,7 @@ export default function MenuPage() {
     }))
   }
 
-  async function updateDish(
+  function patchMenuEntryLocal(
     entryId: string,
     field: "portions" | "notes",
     val: string | number,
@@ -306,9 +318,22 @@ export default function MenuPage() {
       }
       return next
     })
+  }
+
+  async function updateDish(
+    entryId: string,
+    field: "portions" | "notes",
+    val: string | number,
+    opts?: { persist?: boolean },
+  ) {
+    patchMenuEntryLocal(entryId, field, val)
+    if (opts?.persist === false) return
 
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("menu_items")
       .update({ [field]: val })
@@ -322,7 +347,10 @@ export default function MenuPage() {
 
   async function confirmMenu() {
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const mid = await resolveMenuId()
     if (!mid) return
     const { error } = await supabase
@@ -351,15 +379,36 @@ export default function MenuPage() {
     )
   }
 
-  if (error || !home) {
+  if (error || homes.length === 0) {
     return (
       <AppShell>
-        {error && <ErrorBanner message={error} />}
-        {!home && !error && (
-          <p className="text-center text-sm text-slate-400 py-8">
-            Add a residence first to plan weekly menus.
-          </p>
+        <PageHeader title="Weekly Menu" />
+        {error && (
+          <ErrorBanner
+            message={error}
+            onRetry={() => setRetryCount((c) => c + 1)}
+          />
         )}
+        {!error && homes.length === 0 && (
+          <EmptyState
+            title="No residence yet"
+            message="Add a home before planning weekly menus."
+            action={
+              <Link href="/homes" className={ui.btnPrimary}>
+                Add residence
+              </Link>
+            }
+          />
+        )}
+      </AppShell>
+    )
+  }
+
+  if (!home) {
+    return (
+      <AppShell>
+        <PageHeader title="Weekly Menu" />
+        <NoHomesBanner />
       </AppShell>
     )
   }
@@ -393,8 +442,9 @@ export default function MenuPage() {
                   {cat}
                 </h3>
                 <button
+                  type="button"
                   onClick={() => openAddModal(selectedDay, cat)}
-                  className="text-xs font-bold text-navy-light"
+                  className={ui.btnText}
                 >
                   + Add
                 </button>
@@ -431,7 +481,7 @@ export default function MenuPage() {
                             <button
                               key={p}
                               onClick={() => updateDish(entry.id, "portions", p)}
-                              className={`h-8 w-8 rounded-lg text-xs font-bold transition-all ${
+                              className={`h-11 min-h-[44px] w-11 min-w-[44px] rounded-lg text-xs font-bold transition-all ${
                                 entry.portions === p
                                   ? "bg-navy text-white"
                                   : "bg-slate-100 text-slate-500"
@@ -444,6 +494,11 @@ export default function MenuPage() {
                         <input
                           value={entry.notes}
                           onChange={(e) =>
+                            updateDish(entry.id, "notes", e.target.value, {
+                              persist: false,
+                            })
+                          }
+                          onBlur={(e) =>
                             updateDish(entry.id, "notes", e.target.value)
                           }
                           placeholder="Notes — dietary restrictions, guests..."
@@ -452,7 +507,7 @@ export default function MenuPage() {
                       </div>
                       <button
                         onClick={() => removeDish(entry.id, selectedDay, cat)}
-                        className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500"
+                        className="flex h-11 min-h-[44px] w-11 min-w-[44px] flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500"
                       >
                         <X size={13} />
                       </button>
@@ -563,7 +618,7 @@ export default function MenuPage() {
             <button
               key={h.id}
               onClick={() => setHomeId(h.id)}
-              className={`flex-shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all ${
+              className={`min-h-[44px] flex-shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition-all ${
                 homeId === h.id
                   ? "bg-surface text-navy"
                   : "border border-white/25 bg-white/10 text-white"
@@ -576,7 +631,12 @@ export default function MenuPage() {
       </div>
 
       <div className="mb-5 flex items-center justify-between rounded-2xl border border-stone-200/60 bg-white px-4 py-3 shadow-sm">
-        <button onClick={() => setWeekOffset((w) => w - 1)} className="p-1 text-slate-400">
+        <button
+          type="button"
+          onClick={() => setWeekOffset((w) => w - 1)}
+          className={`${ui.btnIcon} text-slate-500`}
+          aria-label="Previous week"
+        >
           <ChevronLeft size={20} />
         </button>
         <div className="text-center">
@@ -585,7 +645,12 @@ export default function MenuPage() {
             {formatMenuDate(dates[0])} — {formatMenuDate(dates[6])}
           </p>
         </div>
-        <button onClick={() => setWeekOffset((w) => w + 1)} className="p-1 text-slate-400">
+        <button
+          type="button"
+          onClick={() => setWeekOffset((w) => w + 1)}
+          className={`${ui.btnIcon} text-slate-500`}
+          aria-label="Next week"
+        >
           <ChevronRight size={20} />
         </button>
       </div>

@@ -180,7 +180,10 @@ export default function HomesPage() {
     if (!confirm(`Archive "${home.name}"? You can restore it later from the database.`))
       return
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("homes")
       .update({ archived_at: new Date().toISOString() })
@@ -218,7 +221,19 @@ export default function HomesPage() {
       {loading ? (
         <SkeletonList count={2} className="h-36" />
       ) : homes.length === 0 ? (
-        <EmptyState message="No residences yet. Add your first home to begin household operations." />
+        <EmptyState
+          title="No residences yet"
+          message="Add your first home to begin pantry, meals, and shopping."
+          action={
+            <button
+              type="button"
+              onClick={() => setModalMode("add")}
+              className={ui.btnPrimary}
+            >
+              Add residence
+            </button>
+          }
+        />
       ) : (
         homes.map((home) => (
           <HomeCard
@@ -302,7 +317,7 @@ function HomeFormModal({
             <button
               type="button"
               onClick={() => onArchive(home)}
-              className="w-full rounded-xl border border-rose-200/80 py-3 text-sm font-semibold text-rose-800"
+              className="w-full min-h-[44px] rounded-xl border border-rose-200/80 py-3 text-sm font-semibold text-rose-800"
             >
               Archive Residence
             </button>

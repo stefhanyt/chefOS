@@ -21,6 +21,7 @@ import type { Home, PreparedMeal, MealStatus } from "@/lib/types"
 import { Plus } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 import EmptyState from "@/components/EmptyState"
+import NoHomesBanner from "@/components/NoHomesBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
 import SheetModal from "@/components/SheetModal"
@@ -197,7 +198,10 @@ export default function MealsPage() {
   async function handleRemoveMeal(meal: PreparedMeal) {
     if (!confirm(`Remove "${meal.name}" from prepared meals?`)) return
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("prepared_meals")
       .update({ archived_at: new Date().toISOString() })
@@ -222,7 +226,9 @@ export default function MealsPage() {
         }
         action={
           <button
+            type="button"
             onClick={() => setModalMode("add")}
+            disabled={!loading && homes.length === 0}
             className={ui.btnHeader}
           >
             <Plus size={15} />
@@ -230,6 +236,8 @@ export default function MealsPage() {
           </button>
         }
       />
+
+      {!loading && homes.length === 0 && <NoHomesBanner />}
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
@@ -332,6 +340,9 @@ function LogMealForm({
   const [portions, setPortions] = useState(String(meal?.portions ?? 2))
   const [storageLocation, setStorageLocation] = useState(meal?.storage_location ?? "")
   const [reheating, setReheating] = useState(meal?.reheating_instructions ?? "")
+  const [showMore, setShowMore] = useState(
+    Boolean(meal?.storage_location || meal?.reheating_instructions),
+  )
   const [homeId, setHomeId] = useState(meal?.home_id ?? "")
   const [saving, setSaving] = useState(false)
   const [autofillHint, setAutofillHint] = useState<string | null>(null)
@@ -479,9 +490,7 @@ function LogMealForm({
     >
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         {homes.length === 0 ? (
-          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Add a residence under Settings → Homes before logging meals.
-          </p>
+          <NoHomesBanner compact />
         ) : (
           <div>
             <label className="chef-label">Residence</label>
@@ -545,18 +554,29 @@ function LogMealForm({
           required
           min={1}
         />
-        <FormField
-          label="Storage Location"
-          value={storageLocation}
-          onChange={setStorageLocation}
-          placeholder="e.g. Main Fridge"
-        />
-        <FormField
-          label="Reheating Instructions"
-          value={reheating}
-          onChange={setReheating}
-          placeholder="e.g. Stove, medium heat"
-        />
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className={`${ui.btnText} -ml-2 w-full justify-center text-stone-500`}
+        >
+          {showMore ? "Fewer options" : "Storage & reheating (optional)"}
+        </button>
+        {showMore && (
+          <>
+            <FormField
+              label="Storage Location"
+              value={storageLocation}
+              onChange={setStorageLocation}
+              placeholder="e.g. Main Fridge"
+            />
+            <FormField
+              label="Reheating Instructions"
+              value={reheating}
+              onChange={setReheating}
+              placeholder="e.g. Stove, medium heat"
+            />
+          </>
+        )}
       </form>
     </SheetModal>
   )

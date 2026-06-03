@@ -3,15 +3,22 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import ScanSourceBanner from "@/components/ScanSourceBanner"
 import { ChevronLeft, Check, Loader2, AlertCircle, Image } from "lucide-react"
-import { lookupBarcode, parseProductName } from "@/lib/openfoodfacts"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import {
+  applyFieldsToScanForm,
+  resolveBarcodeProduct,
+  upsertProductCatalog,
+  type ProductLookupSource,
+} from "@/lib/scan-product"
 import { useToast } from "@/components/ToastProvider"
+import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home } from "@/lib/types"
 
-type ScanState = "scanning" | "looking_up" | "found" | "manual" | "saved"
+type ScanState = "scanning" | "looking_up" | "review" | "saved"
 type ErrorKind = "none" | "permission" | "camera" | "lookup"
 
 export default function ScanPage() {
@@ -23,10 +30,14 @@ export default function ScanPage() {
   const streamRef = useRef<MediaStream | null>(null)
 
   const [scanState, setScanState] = useState<ScanState>("scanning")
+  const [lookupSource, setLookupSource] = useState<ProductLookupSource>("manual")
   const [barcode, setBarcode] = useState("")
   const [productName, setProductName] = useState("")
+  const [brand, setBrand] = useState("")
   const [quantity, setQuantity] = useState("")
   const [unit, setUnit] = useState("")
+  const [category, setCategory] = useState("Other")
+  const [notes, setNotes] = useState("")
   const [location, setLocation] = useState("")
   const [homeId, setHomeId] = useState("")
   const [homes, setHomes] = useState<Home[]>([])
@@ -69,7 +80,7 @@ export default function ScanPage() {
       }
 
       if (videoRef.current) {
-        reader.decodeFromConstraints(constraints, videoRef.current, async (result, err) => {
+        reader.decodeFromConstraints(constraints, videoRef.current, async (result) => {
           if (result && !didScanRef.current) {
             didScanRef.current = true
             const code = result.getText()
@@ -86,13 +97,14 @@ export default function ScanPage() {
       ) {
         setErrorKind("permission")
         setErrorMsg(
-          "Camera access was denied. On iPhone: Settings → Safari → Camera → Allow."
+          "Camera access was denied. On iPhone: Settings → Safari → Camera → Allow.",
         )
       } else {
         setErrorKind("camera")
         setErrorMsg("Camera unavailable. You can enter a barcode manually below.")
       }
-      setScanState("manual")
+      setLookupSource("manual")
+      setScanState("review")
     }
   }
 
@@ -107,12 +119,44 @@ export default function ScanPage() {
 
   async function handleBarcode(code: string) {
     setScanState("looking_up")
-    const product = await lookupBarcode(code)
-    if (product) {
-      setProductName(parseProductName(product))
-      setScanState("found")
-    } else {
-      setScanState("manual")
+    const supabase = createClient()
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      setLookupSource("manual")
+      setBarcode(code)
+      setScanState("review")
+      return
+    }
+
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      showError("You must be signed in to look up products.")
+      setLookupSource("manual")
+      setBarcode(code)
+      setScanState("review")
+      return
+    }
+
+    try {
+      const result = await resolveBarcodeProduct(supabase, code, userId)
+      setLookupSource(result.source)
+      setBarcode(result.barcode)
+      applyFieldsToScanForm(result.fields, {
+        setProductName,
+        setBrand,
+        setQuantity,
+        setUnit,
+        setCategory,
+        setNotes,
+      })
+      setScanState("review")
+    } catch (err) {
+      logSupabaseError("scan product resolve", err)
+      setErrorKind("lookup")
+      setErrorMsg("Product lookup failed. You can enter details manually.")
+      setLookupSource("manual")
+      setBarcode(code)
+      setScanState("review")
     }
   }
 
@@ -126,7 +170,9 @@ export default function ScanPage() {
       const url = URL.createObjectURL(file)
       const img = new window.Image()
       img.src = url
-      await new Promise<void>((res) => { img.onload = () => res() })
+      await new Promise<void>((res) => {
+        img.onload = () => res()
+      })
       const result = await reader.decodeFromImageElement(img)
       URL.revokeObjectURL(url)
       const code = result.getText()
@@ -134,7 +180,8 @@ export default function ScanPage() {
       await handleBarcode(code)
     } catch {
       setBarcode("")
-      setScanState("manual")
+      setLookupSource("manual")
+      setScanState("review")
     }
   }
 
@@ -145,7 +192,7 @@ export default function ScanPage() {
     }
     const supabase = createClient()
     if (!supabase) {
-      showError("Database not configured.")
+      showError(CONFIG_ERROR)
       return
     }
     const userId = await getAuthUserId(supabase)
@@ -159,11 +206,12 @@ export default function ScanPage() {
       quantity: Number(quantity) || 0,
       unit: unit.trim(),
       storage_location: location.trim(),
-      category: "Other",
+      category: category.trim() || "Other",
       minimum_quantity: 0,
       status: "OK",
       home_id: homeId,
       barcode: barcode || null,
+      notes: notes.trim() || null,
       created_by: userId,
     })
 
@@ -171,6 +219,24 @@ export default function ScanPage() {
       logSupabaseError("scan pantry insert", pantryError)
       showError(getSupabaseErrorMessage(pantryError))
       return
+    }
+
+    if (barcode.trim()) {
+      const { error: catalogError } = await upsertProductCatalog(supabase, userId, {
+        barcode,
+        productName,
+        brand,
+        quantity,
+        unit,
+        category,
+        notes,
+      })
+      if (catalogError) {
+        showError(
+          "Saved to pantry, but could not update your product catalog. " +
+            getSupabaseErrorMessage(catalogError),
+        )
+      }
     }
 
     await supabase.from("barcode_scans").insert({
@@ -186,6 +252,22 @@ export default function ScanPage() {
 
     setScanState("saved")
     showSuccess("Item saved to pantry")
+  }
+
+  function resetForAnotherScan() {
+    setScanState("scanning")
+    setProductName("")
+    setBrand("")
+    setBarcode("")
+    setQuantity("")
+    setUnit("")
+    setCategory("Other")
+    setNotes("")
+    setLocation("")
+    setLookupSource("manual")
+    setErrorKind("none")
+    setErrorMsg("")
+    startScanner()
   }
 
   return (
@@ -232,20 +314,25 @@ export default function ScanPage() {
             />
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="relative h-52 w-52">
-                {(["top-0 left-0", "top-0 right-0", "bottom-0 left-0", "bottom-0 right-0"] as const).map(
-                  (pos, i) => (
-                    <div
-                      key={i}
-                      className={`absolute ${pos} h-8 w-8 rounded-sm border-4 border-blue-400`}
-                      style={{
-                        borderRight: pos.includes("right") ? undefined : "none",
-                        borderLeft: pos.includes("left") ? undefined : "none",
-                        borderBottom: pos.includes("bottom") ? undefined : "none",
-                        borderTop: pos.includes("top") ? undefined : "none",
-                      }}
-                    />
-                  )
-                )}
+                {(
+                  [
+                    "top-0 left-0",
+                    "top-0 right-0",
+                    "bottom-0 left-0",
+                    "bottom-0 right-0",
+                  ] as const
+                ).map((pos, i) => (
+                  <div
+                    key={i}
+                    className={`absolute ${pos} h-8 w-8 rounded-sm border-4 border-blue-400`}
+                    style={{
+                      borderRight: pos.includes("right") ? undefined : "none",
+                      borderLeft: pos.includes("left") ? undefined : "none",
+                      borderBottom: pos.includes("bottom") ? undefined : "none",
+                      borderTop: pos.includes("top") ? undefined : "none",
+                    }}
+                  />
+                ))}
                 <div className="absolute inset-x-0 top-1/2 h-0.5 animate-pulse bg-blue-400 opacity-70" />
               </div>
             </div>
@@ -262,6 +349,7 @@ export default function ScanPage() {
             onChange={handleImageFile}
           />
           <button
+            type="button"
             onClick={() => fileRef.current?.click()}
             className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
           >
@@ -269,7 +357,12 @@ export default function ScanPage() {
             Use Photo Library
           </button>
           <button
-            onClick={() => { stopScanner(); setScanState("manual") }}
+            type="button"
+            onClick={() => {
+              stopScanner()
+              setLookupSource("manual")
+              setScanState("review")
+            }}
             className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
           >
             Enter Manually
@@ -286,14 +379,9 @@ export default function ScanPage() {
         </div>
       )}
 
-      {(scanState === "found" || scanState === "manual") && (
+      {scanState === "review" && (
         <div className="space-y-4">
-          {scanState === "found" && (
-            <div className="flex items-center gap-2 rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
-              <Check size={15} />
-              Product found · Barcode: {barcode}
-            </div>
-          )}
+          <ScanSourceBanner source={lookupSource} barcode={barcode || undefined} />
 
           <Field
             label="Product Name"
@@ -301,8 +389,14 @@ export default function ScanPage() {
             onChange={setProductName}
             placeholder="e.g. Organic Eggs"
           />
+          <Field
+            label="Brand (optional)"
+            value={brand}
+            onChange={setBrand}
+            placeholder="e.g. Kirkland"
+          />
 
-          {scanState === "manual" && (
+          {!barcode && (
             <Field
               label="Barcode (optional)"
               value={barcode}
@@ -321,6 +415,13 @@ export default function ScanPage() {
             />
             <Field label="Unit" value={unit} onChange={setUnit} placeholder="e.g. dozen" />
           </div>
+
+          <Field
+            label="Category"
+            value={category}
+            onChange={setCategory}
+            placeholder="e.g. Dairy"
+          />
 
           {homes.length > 0 && (
             <div>
@@ -348,7 +449,15 @@ export default function ScanPage() {
             placeholder="e.g. Fridge"
           />
 
+          <Field
+            label="Catalog notes (optional)"
+            value={notes}
+            onChange={setNotes}
+            placeholder="Saved for next scan of this barcode"
+          />
+
           <button
+            type="button"
             onClick={handleSave}
             disabled={!productName.trim()}
             className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft disabled:opacity-50"
@@ -357,7 +466,8 @@ export default function ScanPage() {
           </button>
 
           <button
-            onClick={() => { setScanState("scanning"); setErrorKind("none"); setErrorMsg(""); startScanner() }}
+            type="button"
+            onClick={resetForAnotherScan}
             className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
           >
             Scan Another
@@ -374,23 +484,17 @@ export default function ScanPage() {
           <p className="text-sm text-slate-500">{productName} added to pantry.</p>
           <div className="mt-4 flex w-full gap-3">
             <Link href="/pantry" className="flex-1">
-              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600">
+              <button
+                type="button"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
+              >
                 View Pantry
               </button>
             </Link>
             <button
-              onClick={() => {
-                setScanState("scanning")
-                setProductName("")
-                setBarcode("")
-                setQuantity("")
-                setUnit("")
-                setLocation("")
-                setErrorKind("none")
-                setErrorMsg("")
-                startScanner()
-              }}
-              className="flex flex-1 min-h-[44px] items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
+              type="button"
+              onClick={resetForAnotherScan}
+              className="flex min-h-[44px] flex-1 items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
             >
               Scan Again
             </button>

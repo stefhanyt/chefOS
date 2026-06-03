@@ -43,17 +43,21 @@ export const ui = {
   btnSecondary:
     "inline-flex min-h-[44px] items-center justify-center rounded-xl border border-stone-200 bg-surface px-4 py-2.5 text-sm font-semibold text-charcoal transition active:bg-stone-50",
 
-  /** Ghost icon button */
+  /** Ghost icon button (44px touch target) */
   btnIcon:
-    "flex h-10 w-10 items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-charcoal active:bg-stone-100",
+    "flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-stone-400 transition hover:bg-stone-100 hover:text-charcoal active:bg-stone-100",
 
-  /** Filter chip — inactive */
+  /** Compact text action with adequate tap area */
+  btnText:
+    "inline-flex min-h-[44px] items-center px-2 text-sm font-semibold text-navy-light transition active:opacity-80",
+
+  /** Filter chip — inactive (44px min touch target) */
   chip:
-    "shrink-0 rounded-full border border-stone-200/80 bg-surface px-4 py-2 text-xs font-semibold text-stone-600 transition",
+    "shrink-0 rounded-full border border-stone-200/80 bg-surface px-4 py-2.5 text-xs font-semibold text-stone-600 transition min-h-[44px] inline-flex items-center",
 
   /** Filter chip — active */
   chipActive:
-    "shrink-0 rounded-full bg-navy px-4 py-2 text-xs font-semibold text-ivory shadow-soft",
+    "shrink-0 rounded-full bg-navy px-4 py-2.5 text-xs font-semibold text-ivory shadow-soft min-h-[44px] inline-flex items-center",
 
   /** Text input */
   input:

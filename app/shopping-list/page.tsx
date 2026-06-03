@@ -23,6 +23,7 @@ import type { Home, ShoppingItem, Priority } from "@/lib/types"
 import { Plus, Check } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 import EmptyState from "@/components/EmptyState"
+import NoHomesBanner from "@/components/NoHomesBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
 
@@ -139,6 +140,7 @@ export default function ShoppingListPage() {
     if (!purchaseItem) return
 
     const now = new Date().toISOString()
+    const previousItem = purchaseItem
     setItems((prev) =>
       prev.map((i) =>
         i.id === purchaseItem.id
@@ -149,6 +151,9 @@ export default function ShoppingListPage() {
 
     const supabase = createClient()
     if (!supabase) {
+      setItems((prev) =>
+        prev.map((i) => (i.id === previousItem.id ? previousItem : i)),
+      )
       showError(CONFIG_ERROR)
       return
     }
@@ -159,6 +164,9 @@ export default function ShoppingListPage() {
       .eq("id", purchaseItem.id)
 
     if (shopError) {
+      setItems((prev) =>
+        prev.map((i) => (i.id === previousItem.id ? previousItem : i)),
+      )
       logSupabaseError("shopping purchase", shopError)
       showError(getSupabaseErrorMessage(shopError))
       return
@@ -245,7 +253,10 @@ export default function ShoppingListPage() {
   async function handleRemove(item: ShoppingItem) {
     if (!confirm(`Remove "${item.name}" from the shopping list?`)) return
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("shopping_items")
       .update({ archived_at: new Date().toISOString(), status: "Archived" })
@@ -261,7 +272,10 @@ export default function ShoppingListPage() {
 
   async function handleReopen(item: ShoppingItem) {
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("shopping_items")
       .update({ status: "Open", completed_at: null })
@@ -299,7 +313,9 @@ export default function ShoppingListPage() {
         }
         action={
           <button
+            type="button"
             onClick={() => setShowAdd(true)}
+            disabled={!loading && homes.length === 0}
             className={ui.btnHeader}
           >
             <Plus size={15} />
@@ -308,14 +324,21 @@ export default function ShoppingListPage() {
         }
       />
 
+      {!loading && homes.length === 0 && <NoHomesBanner />}
+
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
 
       {loading ? (
         <SkeletonList count={3} className="h-16" />
+      ) : homes.length === 0 ? null : open.length === 0 && purchased.length === 0 ? (
+        <EmptyState
+          title="Shopping list is empty"
+          message="Add items you need to buy for your residences."
+        />
       ) : open.length === 0 ? (
-        <EmptyState message="All caught up — nothing left on the shopping list." />
+        <EmptyState message="All caught up — nothing left to buy." />
       ) : (
         Object.entries(grouped).map(([homeName, groupItems]) => (
           <div key={homeName} className="mb-5">
@@ -350,7 +373,7 @@ export default function ShoppingListPage() {
                 <button
                   type="button"
                   onClick={() => handleReopen(item)}
-                  className="shrink-0 rounded-xl border border-stone-200/80 px-3 py-2 text-xs font-semibold text-navy-light"
+                  className={`${ui.btnSecondary} shrink-0 px-4 text-xs`}
                 >
                   Reopen
                 </button>
@@ -433,6 +456,7 @@ function AddShoppingModal({
   const [notes, setNotes] = useState("")
   const [homeId, setHomeId] = useState("")
   const [saving, setSaving] = useState(false)
+  const [showNotes, setShowNotes] = useState(false)
 
   useEffect(() => {
     if (homes.length > 0 && !homeId) setHomeId(homes[0].id)
@@ -481,9 +505,7 @@ function AddShoppingModal({
     >
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         {homes.length === 0 ? (
-          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Add a residence first.
-          </p>
+          <NoHomesBanner compact />
         ) : homes.length > 1 ? (
           <div>
             <label className="chef-label">Residence</label>
@@ -515,7 +537,7 @@ function AddShoppingModal({
                 key={p}
                 type="button"
                 onClick={() => setPriority(p)}
-                className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] flex-1 rounded-xl border text-xs font-semibold transition-colors ${
                   priority === p
                     ? "border-navy bg-navy text-ivory"
                     : "border-stone-200/80 bg-surface text-stone-600"
@@ -526,7 +548,16 @@ function AddShoppingModal({
             ))}
           </div>
         </div>
-        <FormField label="Notes (optional)" value={notes} onChange={setNotes} placeholder="Any details…" />
+        <button
+          type="button"
+          onClick={() => setShowNotes((v) => !v)}
+          className={`${ui.btnText} -ml-2 w-full justify-center text-stone-500`}
+        >
+          {showNotes ? "Hide notes" : "Add notes (optional)"}
+        </button>
+        {showNotes && (
+          <FormField label="Notes" value={notes} onChange={setNotes} placeholder="Any details…" />
+        )}
       </form>
     </SheetModal>
   )

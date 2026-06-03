@@ -12,10 +12,8 @@ import { useToast } from "@/components/ToastProvider"
 import { Users, Home, Bell, Shield, ChevronRight } from "lucide-react"
 import type { Profile } from "@/lib/types"
 import ErrorBanner from "@/components/ErrorBanner"
+import { CONFIG_ERROR } from "@/lib/constants"
 import { ui } from "@/lib/ui"
-
-const CONFIG_ERROR =
-  "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
 
 const settingsGroups = [
   {
@@ -40,9 +38,10 @@ const settingsGroups = [
     items: [
       {
         label: "Notifications",
-        sub: "Expiry and restock alerts",
+        sub: "Coming soon",
         icon: Bell,
-        href: "#",
+        href: "/settings",
+        disabled: true,
       },
     ],
   },
@@ -55,6 +54,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [editName, setEditName] = useState("")
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     async function loadProfile() {
@@ -90,13 +90,20 @@ export default function SettingsPage() {
       }
     }
     loadProfile()
-  }, [])
+  }, [retryCount])
 
   async function handleSaveProfile() {
     const supabase = createClient()
-    if (!supabase || !profile) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
+    if (!profile) return
     const userId = await getAuthUserId(supabase)
-    if (!userId) return
+    if (!userId) {
+      showError("You must be signed in to save your profile.")
+      return
+    }
 
     setSaving(true)
     const { data, error } = await supabase
@@ -125,7 +132,12 @@ export default function SettingsPage() {
     <AppShell>
       <PageHeader title="Settings" />
 
-      {error && <ErrorBanner message={error} />}
+      {error && (
+        <ErrorBanner
+          message={error}
+          onRetry={() => setRetryCount((c) => c + 1)}
+        />
+      )}
 
       {loading ? (
         <div className={`${ui.skeleton} mb-6 h-32`} />
@@ -174,26 +186,47 @@ export default function SettingsPage() {
             {group.group}
           </h2>
           <div className={`${ui.cardInset} overflow-hidden`}>
-            {group.items.map((item, i) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`flex items-center justify-between px-5 py-4 transition-colors active:bg-slate-50 ${
-                  i < group.items.length - 1 ? "border-b border-slate-100" : ""
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy/5 text-navy-light">
-                    <item.icon size={17} strokeWidth={1.5} />
+            {group.items.map((item, i) => {
+              const rowClass = `flex min-h-[52px] items-center justify-between px-5 py-4 ${
+                i < group.items.length - 1 ? "border-b border-slate-100" : ""
+              }`
+              const inner = (
+                <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy/5 text-navy-light">
+                      <item.icon size={17} strokeWidth={1.5} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-charcoal">{item.label}</p>
+                      <p className="text-xs text-stone-500">{item.sub}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-charcoal">{item.label}</p>
-                    <p className="text-xs text-stone-500">{item.sub}</p>
+                  {!("disabled" in item && item.disabled) && (
+                    <ChevronRight size={16} className="text-stone-300" strokeWidth={1.5} />
+                  )}
+                </>
+              )
+              if ("disabled" in item && item.disabled) {
+                return (
+                  <div
+                    key={item.label}
+                    className={`${rowClass} cursor-not-allowed opacity-50`}
+                    aria-disabled
+                  >
+                    {inner}
                   </div>
-                </div>
-                <ChevronRight size={16} className="text-stone-300" strokeWidth={1.5} />
-              </Link>
-            ))}
+                )
+              }
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className={`${rowClass} transition-colors active:bg-slate-50`}
+                >
+                  {inner}
+                </Link>
+              )
+            })}
           </div>
         </div>
       ))}

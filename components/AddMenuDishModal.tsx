@@ -142,7 +142,7 @@ export default function AddMenuDishModal({
         <button
           type="button"
           onClick={() => setTab("library")}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold transition ${
+          className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl text-xs font-semibold transition ${
             tab === "library"
               ? "bg-navy text-ivory shadow-soft"
               : "border border-stone-200/80 bg-stone-50 text-stone-600"
@@ -154,7 +154,7 @@ export default function AddMenuDishModal({
         <button
           type="button"
           onClick={() => setTab("manual")}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-semibold transition ${
+          className={`flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl text-xs font-semibold transition ${
             tab === "manual"
               ? "bg-navy text-ivory shadow-soft"
               : "border border-stone-200/80 bg-stone-50 text-stone-600"

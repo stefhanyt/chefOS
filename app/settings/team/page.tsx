@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import StatusBadge from "@/components/StatusBadge"
 import ErrorBanner from "@/components/ErrorBanner"
+import EmptyState from "@/components/EmptyState"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
@@ -179,6 +180,16 @@ export default function TeamPage() {
             <div key={i} className="h-24 animate-pulse rounded-[22px] bg-slate-200" />
           ))}
         </div>
+      ) : homes.length === 0 ? (
+        <EmptyState
+          title="No residences yet"
+          message="Add a home before inviting team members."
+          action={
+            <Link href="/homes" className={ui.btnPrimary}>
+              Add residence
+            </Link>
+          }
+        />
       ) : (
         homes.map((home) => {
           const homeMembers = members.filter((m) => m.home_id === home.id)

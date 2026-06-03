@@ -4,10 +4,12 @@ export default function EmptyState({
   title,
   message,
   icon,
+  action,
 }: {
   title?: string
   message: string
   icon?: React.ReactNode
+  action?: React.ReactNode
 }) {
   return (
     <div className="chef-empty">
@@ -20,6 +22,7 @@ export default function EmptyState({
       <p className={`text-sm leading-relaxed text-stone-500 ${title ? "mt-1.5" : ""}`}>
         {message}
       </p>
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   )
 }

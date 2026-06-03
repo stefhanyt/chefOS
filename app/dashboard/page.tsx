@@ -11,11 +11,10 @@ import { useToast } from "@/components/ToastProvider"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { CONFIG_ERROR } from "@/lib/constants"
 import { ui } from "@/lib/ui"
+import EmptyState from "@/components/EmptyState"
 import type { Home, PantryItem, ShoppingItem, PreparedMeal } from "@/lib/types"
-
-const CONFIG_ERROR =
-  "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
 
 export default function DashboardPage() {
   const { showError } = useToast()
@@ -71,6 +70,9 @@ export default function DashboardPage() {
           ])
 
         if (homesRes.error) throw homesRes.error
+        if (alertsRes.error) throw alertsRes.error
+        if (shoppingRes.error) throw shoppingRes.error
+        if (mealsRes.error) throw mealsRes.error
         setHomes(homesRes.data ?? [])
         setAlerts((alertsRes.data as PantryItem[]) ?? [])
         setOpenShopping((shoppingRes.data as ShoppingItem[]) ?? [])
@@ -131,9 +133,15 @@ export default function DashboardPage() {
         <>
           <Section title="Residences" seeAllHref="/homes">
             {homes.length === 0 ? (
-              <p className="chef-empty text-sm text-stone-500">
-                No residences yet. Add one under Settings → Homes.
-              </p>
+              <EmptyState
+                title="No residences yet"
+                message="Add your first home to start tracking pantry, meals, and shopping."
+                action={
+                  <Link href="/homes" className={ui.btnPrimary}>
+                    Add residence
+                  </Link>
+                }
+              />
             ) : (
               homes.map((home) => (
                 <Link key={home.id} href={`/homes/${home.id}`}>

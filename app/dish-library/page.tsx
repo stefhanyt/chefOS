@@ -107,7 +107,10 @@ export default function DishLibraryPage() {
 
   async function handleUpdateDish(id: string, form: DishFormInput) {
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { data, error } = await supabase
       .from("dish_library")
       .update({ ...form, updated_at: new Date().toISOString() })
@@ -129,9 +132,13 @@ export default function DishLibraryPage() {
     showSuccess("Dish updated")
   }
 
-  async function handleArchiveDish(id: string) {
+  async function handleArchiveDish(id: string, name: string) {
+    if (!confirm(`Remove "${name}" from the dish library?`)) return
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("dish_library")
       .update({ archived_at: new Date().toISOString() })
@@ -214,21 +221,23 @@ export default function DishLibraryPage() {
 
             <div className="mt-4 flex gap-2">
               <button
+                type="button"
                 onClick={() => setEditingDish(dish)}
-                className={`${ui.btnSecondary} flex-1 py-2.5 text-xs`}
+                className={`${ui.btnSecondary} flex-1 text-xs`}
               >
                 Edit
               </button>
               <button
-                onClick={() => handleArchiveDish(dish.id)}
-                className="flex items-center justify-center rounded-2xl border border-red-100 px-3 py-2.5 text-red-500"
-                aria-label="Remove dish"
+                type="button"
+                onClick={() => handleArchiveDish(dish.id, dish.name)}
+                className={`${ui.btnIcon} border border-red-100 text-red-500`}
+                aria-label={`Remove ${dish.name}`}
               >
-                <Trash2 size={14} />
+                <Trash2 size={18} />
               </button>
               <a
-                href={`/meals`}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-navy py-2.5 text-xs font-semibold text-ivory shadow-soft"
+                href="/meals"
+                className={`${ui.btnPrimary} flex-1 gap-1.5 text-xs`}
               >
                 <BookOpen size={13} />
                 Log Meal
@@ -286,6 +295,15 @@ function DishFormModal({
     (Array.isArray(initial?.tags) ? initial.tags : []).join(", "),
   )
   const [saving, setSaving] = useState(false)
+  const [showMore, setShowMore] = useState(
+    Boolean(
+      initial?.ingredients ||
+        initial?.prep_time ||
+        initial?.storage_instructions ||
+        initial?.reheating_instructions ||
+        (Array.isArray(initial?.tags) && initial.tags.length > 0),
+    ),
+  )
 
   const canSubmit = name.trim().length > 0 && !saving
 
@@ -329,16 +347,42 @@ function DishFormModal({
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Dish Name" value={name} onChange={setName} placeholder="e.g. Truffle Risotto" required />
         <FormField label="Category" value={category} onChange={setCategory} placeholder="e.g. Pasta & Grains" />
-        <FormField label="Ingredients" value={ingredients} onChange={setIngredients} placeholder="Comma-separated list" />
-        <FormField label="Prep Time" value={prepTime} onChange={setPrepTime} placeholder="e.g. 45 min" />
-        <FormField label="Storage Instructions" value={storage} onChange={setStorage} placeholder="e.g. Fridge up to 3 days" />
-        <FormField label="Reheating Instructions" value={reheating} onChange={setReheating} placeholder="e.g. Stove, medium heat" />
-        <FormField
-          label="Tags (comma-separated)"
-          value={tagsRaw}
-          onChange={setTagsRaw}
-          placeholder="e.g. gluten-free, quick"
-        />
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className={`${ui.btnText} -ml-2 w-full justify-center text-stone-500`}
+        >
+          {showMore ? "Fewer details" : "Recipe details (optional)"}
+        </button>
+        {showMore && (
+          <>
+            <FormField
+              label="Ingredients"
+              value={ingredients}
+              onChange={setIngredients}
+              placeholder="Main ingredients"
+            />
+            <FormField label="Prep Time" value={prepTime} onChange={setPrepTime} placeholder="e.g. 45 min" />
+            <FormField
+              label="Storage Instructions"
+              value={storage}
+              onChange={setStorage}
+              placeholder="e.g. Fridge up to 3 days"
+            />
+            <FormField
+              label="Reheating Instructions"
+              value={reheating}
+              onChange={setReheating}
+              placeholder="e.g. Stove, medium heat"
+            />
+            <FormField
+              label="Tags (comma-separated)"
+              value={tagsRaw}
+              onChange={setTagsRaw}
+              placeholder="e.g. gluten-free, quick"
+            />
+          </>
+        )}
       </form>
     </SheetModal>
   )

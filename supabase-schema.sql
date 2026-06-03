@@ -139,7 +139,23 @@ create table menu_items (
   created_at timestamp default now()
 );
 
--- 10. BARCODE SCANS
+-- 10. PRODUCT CATALOG (per-user barcode memory)
+create table product_catalog (
+  id uuid primary key default gen_random_uuid(),
+  barcode text not null,
+  product_name text not null,
+  brand text,
+  default_quantity numeric,
+  default_unit text,
+  default_category text,
+  notes text,
+  created_by uuid references profiles(id) not null,
+  created_at timestamp default now(),
+  updated_at timestamp default now(),
+  unique (barcode, created_by)
+);
+
+-- 11. BARCODE SCANS
 create table barcode_scans (
   id uuid primary key default gen_random_uuid(),
   home_id uuid references homes(id),
@@ -188,6 +204,7 @@ alter table dish_library    enable row level security;
 alter table prepared_meals  enable row level security;
 alter table weekly_menus    enable row level security;
 alter table menu_items      enable row level security;
+alter table product_catalog enable row level security;
 alter table barcode_scans   enable row level security;
 
 -- Profiles (id = auth.users.id; not user_id)
@@ -334,6 +351,18 @@ create policy "Delete menu items" on menu_items
       where wm.id = menu_items.menu_id and is_home_member(wm.home_id)
     )
   );
+
+-- Product catalog (private per user)
+create policy "Users view own catalog" on product_catalog
+  for select to authenticated using (auth.uid() = created_by);
+create policy "Users insert own catalog" on product_catalog
+  for insert to authenticated with check (auth.uid() = created_by);
+create policy "Users update own catalog" on product_catalog
+  for update to authenticated
+  using (auth.uid() = created_by)
+  with check (auth.uid() = created_by);
+create policy "Users delete own catalog" on product_catalog
+  for delete to authenticated using (auth.uid() = created_by);
 
 -- Barcode scans
 create policy "Users view own scans" on barcode_scans

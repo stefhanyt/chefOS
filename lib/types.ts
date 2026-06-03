@@ -164,6 +164,20 @@ export interface BarcodeScan {
   created_at: string
 }
 
+export interface ProductCatalog {
+  id: string
+  barcode: string
+  product_name: string
+  brand?: string | null
+  default_quantity?: number | null
+  default_unit?: string | null
+  default_category?: string | null
+  notes?: string | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
 export interface OpenFoodFactsProduct {
   product_name?: string
   brands?: string

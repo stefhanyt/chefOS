@@ -3,21 +3,30 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import ScanSourceBanner from "@/components/ScanSourceBanner"
 import { ChevronLeft, Trash2, Check, Loader2, ScanLine, AlertCircle } from "lucide-react"
-import { lookupBarcode, parseProductName } from "@/lib/openfoodfacts"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import {
+  resolveBarcodeProduct,
+  upsertProductCatalog,
+  type ProductLookupSource,
+} from "@/lib/scan-product"
 import { useToast } from "@/components/ToastProvider"
+import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home } from "@/lib/types"
 
 interface ScannedItem {
   id: string
   barcode: string
   productName: string
+  brand: string
   quantity: string
   unit: string
+  category: string
   location: string
+  lookupSource: ProductLookupSource
   looking_up: boolean
 }
 
@@ -97,8 +106,12 @@ export default function BatchScanPage() {
   }
 
   function stopScanner() {
-    try { readerRef.current?.reset() } catch {}
-    try { streamRef.current?.getTracks().forEach((t) => t.stop()) } catch {}
+    try {
+      readerRef.current?.reset()
+    } catch {}
+    try {
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+    } catch {}
     setScanning(false)
   }
 
@@ -106,12 +119,56 @@ export default function BatchScanPage() {
     const tempId = `item-${Date.now()}-${Math.random()}`
     setItems((prev) => [
       ...prev,
-      { id: tempId, barcode: code, productName: "", quantity: "", unit: "", location: "", looking_up: true },
+      {
+        id: tempId,
+        barcode: code,
+        productName: "",
+        brand: "",
+        quantity: "",
+        unit: "",
+        category: "Other",
+        location: "",
+        lookupSource: "manual",
+        looking_up: true,
+      },
     ])
-    const product = await lookupBarcode(code)
-    const name = product ? parseProductName(product) : ""
+
+    const supabase = createClient()
+    if (!supabase) {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === tempId ? { ...i, looking_up: false, lookupSource: "manual" } : i,
+        ),
+      )
+      return
+    }
+
+    const userId = await getAuthUserId(supabase)
+    if (!userId) {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === tempId ? { ...i, looking_up: false, lookupSource: "manual" } : i,
+        ),
+      )
+      return
+    }
+
+    const result = await resolveBarcodeProduct(supabase, code, userId)
     setItems((prev) =>
-      prev.map((i) => (i.id === tempId ? { ...i, productName: name, looking_up: false } : i))
+      prev.map((i) =>
+        i.id === tempId
+          ? {
+              ...i,
+              productName: result.fields.productName,
+              brand: result.fields.brand,
+              quantity: result.fields.quantity,
+              unit: result.fields.unit,
+              category: result.fields.category,
+              lookupSource: result.source,
+              looking_up: false,
+            }
+          : i,
+      ),
     )
   }
 
@@ -127,7 +184,11 @@ export default function BatchScanPage() {
 
   async function handleAddAll() {
     const supabase = createClient()
-    if (!supabase || !homeId) {
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
+    if (!homeId) {
       showError("Select a residence before saving.")
       return
     }
@@ -148,7 +209,7 @@ export default function BatchScanPage() {
       quantity: Number(i.quantity) || 0,
       unit: i.unit.trim(),
       storage_location: i.location.trim(),
-      category: "Other",
+      category: i.category.trim() || "Other",
       minimum_quantity: 0,
       status: "OK",
       home_id: homeId,
@@ -161,6 +222,19 @@ export default function BatchScanPage() {
       logSupabaseError("batch pantry insert", pantryError)
       showError(getSupabaseErrorMessage(pantryError))
       return
+    }
+
+    for (const item of valid) {
+      if (!item.barcode.trim()) continue
+      await upsertProductCatalog(supabase, userId, {
+        barcode: item.barcode,
+        productName: item.productName,
+        brand: item.brand,
+        quantity: item.quantity,
+        unit: item.unit,
+        category: item.category,
+        notes: "",
+      })
     }
 
     await supabase.from("barcode_scans").insert(
@@ -193,12 +267,18 @@ export default function BatchScanPage() {
           </p>
           <div className="mt-4 flex w-full gap-3">
             <Link href="/pantry" className="flex-1">
-              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600">
+              <button
+                type="button"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
+              >
                 View Pantry
               </button>
             </Link>
             <Link href="/dashboard" className="flex-1">
-              <button className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30">
+              <button
+                type="button"
+                className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30"
+              >
                 Dashboard
               </button>
             </Link>
@@ -235,6 +315,25 @@ export default function BatchScanPage() {
         </div>
       )}
 
+      {homes.length > 1 && (
+        <div className="mb-4">
+          <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+            Residence
+          </label>
+          <select
+            value={homeId}
+            onChange={(e) => setHomeId(e.target.value)}
+            className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-base"
+          >
+            {homes.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {scanning && (
         <div className="relative mb-4 overflow-hidden rounded-[26px] bg-slate-900 shadow-2xl">
           <video
@@ -248,8 +347,10 @@ export default function BatchScanPage() {
             <div className="h-16 w-48 rounded-lg border-2 border-blue-400 opacity-70" />
           </div>
           <button
+            type="button"
             onClick={stopScanner}
             className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white"
+            aria-label="Done scanning"
           >
             <Check size={18} />
           </button>
@@ -260,6 +361,7 @@ export default function BatchScanPage() {
         <div className="mb-4 rounded-[22px] border border-stone-200/60 bg-white p-8 text-center text-sm text-slate-400">
           No items scanned yet.
           <button
+            type="button"
             onClick={startScanner}
             className="mx-auto mt-3 flex min-h-[44px] items-center gap-2 font-bold text-navy-light"
           >
@@ -282,6 +384,7 @@ export default function BatchScanPage() {
               <div className="mb-3 flex items-center justify-between">
                 <span className="font-mono text-xs text-slate-400">{item.barcode}</span>
                 <button
+                  type="button"
                   onClick={() => removeItem(item.id)}
                   className="flex h-11 w-11 items-center justify-center text-red-400"
                   aria-label="Remove item"
@@ -297,12 +400,20 @@ export default function BatchScanPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  <ScanSourceBanner source={item.lookupSource} />
                   <input
                     type="text"
                     value={item.productName}
                     onChange={(e) => updateItem(item.id, "productName", e.target.value)}
                     placeholder="Product name"
                     className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    type="text"
+                    value={item.brand}
+                    onChange={(e) => updateItem(item.id, "brand", e.target.value)}
+                    placeholder="Brand (optional)"
+                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -323,6 +434,13 @@ export default function BatchScanPage() {
                   </div>
                   <input
                     type="text"
+                    value={item.category}
+                    onChange={(e) => updateItem(item.id, "category", e.target.value)}
+                    placeholder="Category"
+                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    type="text"
                     value={item.location}
                     onChange={(e) => updateItem(item.id, "location", e.target.value)}
                     placeholder="Storage location (e.g. Fridge)"
@@ -338,6 +456,7 @@ export default function BatchScanPage() {
       <div className="flex gap-3">
         {!scanning && (
           <button
+            type="button"
             onClick={startScanner}
             className="flex min-h-[44px] items-center gap-2 rounded-2xl border border-stone-200/60 bg-white px-5 text-sm font-bold text-slate-600 shadow-sm"
           >
@@ -347,8 +466,9 @@ export default function BatchScanPage() {
         )}
         {items.length > 0 && (
           <button
+            type="button"
             onClick={handleAddAll}
-            className="flex flex-1 min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30"
+            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30"
           >
             <Check size={16} />
             Add All to Pantry ({items.length})

@@ -31,6 +31,7 @@ import type { Home, PantryItem, PantryStatus } from "@/lib/types"
 import { Plus } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 import EmptyState from "@/components/EmptyState"
+import NoHomesBanner from "@/components/NoHomesBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
 
@@ -116,7 +117,10 @@ export default function PantryPage() {
       prev.map((i) => (i.id === id ? { ...i, quantity: newQty, status } : i)),
     )
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("pantry_items")
       .update({ quantity: newQty, status, updated_at: new Date().toISOString() })
@@ -200,7 +204,10 @@ export default function PantryPage() {
   async function handleRemove(item: PantryItem) {
     if (!confirm(`Remove "${item.name}" from pantry?`)) return
     const supabase = createClient()
-    if (!supabase) return
+    if (!supabase) {
+      showError(CONFIG_ERROR)
+      return
+    }
     const { error } = await supabase
       .from("pantry_items")
       .update({ archived_at: new Date().toISOString() })
@@ -236,6 +243,7 @@ export default function PantryPage() {
           <button
             type="button"
             onClick={() => setModalMode("add")}
+            disabled={!loading && homes.length === 0}
             className={ui.btnHeader}
           >
             <Plus size={15} />
@@ -243,6 +251,8 @@ export default function PantryPage() {
           </button>
         }
       />
+
+      {!loading && homes.length === 0 && <NoHomesBanner />}
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
@@ -334,6 +344,9 @@ function PantryItemFormModal({
   const [minQty, setMinQty] = useState(String(item?.minimum_quantity ?? 0))
   const [homeId, setHomeId] = useState(defaultHomeId)
   const [saving, setSaving] = useState(false)
+  const [showMore, setShowMore] = useState(
+    Boolean(item?.storage_location || (item?.minimum_quantity ?? 0) > 0),
+  )
   const [autofillHint, setAutofillHint] = useState<string | null>(null)
 
   useEffect(() => {
@@ -448,9 +461,7 @@ function PantryItemFormModal({
     >
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         {homes.length === 0 ? (
-          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Add a residence under Homes first, then return here to add pantry items.
-          </p>
+          <NoHomesBanner compact />
         ) : (
           <div>
             <label className="chef-label">Residence</label>
@@ -499,13 +510,24 @@ function PantryItemFormModal({
           <FormField label="Unit" value={unit} onChange={setUnit} placeholder="e.g. dozen" />
         </div>
         <FormField label="Category" value={category} onChange={setCategory} placeholder="e.g. Dairy" />
-        <FormField
-          label="Storage Location"
-          value={storageLocation}
-          onChange={setStorageLocation}
-          placeholder="e.g. Fridge"
-        />
-        <FormField label="Min Quantity" value={minQty} onChange={setMinQty} type="number" />
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          className={`${ui.btnText} -ml-2 w-full justify-center text-stone-500`}
+        >
+          {showMore ? "Fewer options" : "Storage & par level (optional)"}
+        </button>
+        {showMore && (
+          <>
+            <FormField
+              label="Storage Location"
+              value={storageLocation}
+              onChange={setStorageLocation}
+              placeholder="e.g. Fridge"
+            />
+            <FormField label="Min Quantity" value={minQty} onChange={setMinQty} type="number" />
+          </>
+        )}
       </form>
     </SheetModal>
   )
