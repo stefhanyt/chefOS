@@ -186,7 +186,7 @@ export default function AddMenuDishModal({
             {filtered.length === 0 ? (
               <p className="py-6 text-center text-sm text-stone-500">
                 {dishes.length === 0
-                  ? "Your dish library is empty. Create a dish or type a name manually."
+                  ? "Your dish repertoire is empty. Create a dish or type a name manually."
                   : "No dishes match your search."}
               </p>
             ) : (

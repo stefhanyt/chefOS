@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { Plus, UtensilsCrossed, ScanLine, ShoppingCart } from "lucide-react"
+import { Plus, UtensilsCrossed, ScanLine, ShoppingCart, ChefHat } from "lucide-react"
 import AppShell from "@/components/AppShell"
 import StatusBadge, { pantryStatusType, mealStatusType } from "@/components/StatusBadge"
 import ErrorBanner from "@/components/ErrorBanner"
@@ -118,6 +118,12 @@ export default function DashboardPage() {
           <QuickAction href="/meals" icon={<UtensilsCrossed size={18} strokeWidth={1.5} />} label="Log meal" />
           <QuickAction href="/scan" icon={<ScanLine size={18} strokeWidth={1.5} />} label="Scan" />
           <QuickAction href="/scan/batch" icon={<ShoppingCart size={18} strokeWidth={1.5} />} label="Batch" />
+          <QuickAction
+            href="/dish-library"
+            icon={<ChefHat size={18} strokeWidth={1.5} />}
+            label="Repertoire"
+            className="col-span-2"
+          />
         </div>
       </section>
 
@@ -281,13 +287,15 @@ function QuickAction({
   href,
   icon,
   label,
+  className = "",
 }: {
   href: string
   icon: React.ReactNode
   label: string
+  className?: string
 }) {
   return (
-    <Link href={href}>
+    <Link href={href} className={className}>
       <span className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-ivory/15 bg-ivory/10 py-4 text-xs font-semibold text-ivory backdrop-blur-sm transition active:bg-ivory/20">
         {icon}
         {label}

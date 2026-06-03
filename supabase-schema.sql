@@ -78,21 +78,41 @@ create table shopping_items (
   archived_at timestamp
 );
 
--- 6. DISH LIBRARY
+-- 6. DISH REPERTOIRE (dish_library)
 create table dish_library (
   id uuid primary key default gen_random_uuid(),
   created_by uuid references profiles(id),
   name text not null,
   category text,
+  description text,
+  meal_category text,
+  cuisine_style text,
+  dietary_tags text[] default '{}',
   ingredients text,
+  instructions text,
   prep_time text,
   storage_instructions text,
   reheating_instructions text,
   tags text[],
   notes text,
+  default_servings integer default 4,
+  is_active boolean default true,
+  residence_notes jsonb default '{}',
   created_at timestamp default now(),
   updated_at timestamp default now(),
   archived_at timestamp
+);
+
+create table dish_ingredients (
+  id uuid primary key default gen_random_uuid(),
+  dish_id uuid not null references dish_library(id) on delete cascade,
+  sort_order integer default 0,
+  name text not null,
+  quantity numeric default 1,
+  unit text,
+  category text,
+  notes text,
+  created_at timestamp default now()
 );
 
 -- 7. PREPARED MEALS
@@ -201,6 +221,7 @@ alter table home_members    enable row level security;
 alter table pantry_items    enable row level security;
 alter table shopping_items  enable row level security;
 alter table dish_library    enable row level security;
+alter table dish_ingredients enable row level security;
 alter table prepared_meals  enable row level security;
 alter table weekly_menus    enable row level security;
 alter table menu_items      enable row level security;
@@ -298,6 +319,29 @@ create policy "Authenticated users add dishes" on dish_library
   for insert with check (auth.uid() = created_by);
 create policy "Dish creators update their dishes" on dish_library
   for update using (auth.uid() = created_by);
+
+create policy "View dish ingredients" on dish_ingredients
+  for select to authenticated
+  using (
+    exists (
+      select 1 from dish_library d
+      where d.id = dish_ingredients.dish_id and d.archived_at is null
+    )
+  );
+create policy "Manage own dish ingredients" on dish_ingredients
+  for all to authenticated
+  using (
+    exists (
+      select 1 from dish_library d
+      where d.id = dish_ingredients.dish_id and d.created_by = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from dish_library d
+      where d.id = dish_ingredients.dish_id and d.created_by = auth.uid()
+    )
+  );
 
 -- Prepared meals
 create policy "Members view meals" on prepared_meals

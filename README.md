@@ -39,7 +39,7 @@ App runs on mock data immediately — no Supabase required.
 | `/shopping-list` | Collaborative shopping list grouped by property |
 | `/meals` | Prepared meals with expiry tracking |
 | `/menu` | Weekly menu planner per property |
-| `/dish-library` | Reusable dish/recipe library |
+| `/dish-library` | Dish Repertoire — reusable dishes for menus & shopping |
 | `/scan` | Single barcode scanner (Open Food Facts lookup) |
 | `/scan/batch` | Batch barcode scanner |
 | `/scan/photo` | Photo scan — AI identifies all items from one photo |

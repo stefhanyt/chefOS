@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { useToast } from "@/components/ToastProvider"
-import { Users, Home, Bell, Shield, ChevronRight } from "lucide-react"
+import { Users, Home, Bell, Shield, ChevronRight, ChefHat } from "lucide-react"
 import type { Profile } from "@/lib/types"
 import ErrorBanner from "@/components/ErrorBanner"
 import { CONFIG_ERROR } from "@/lib/constants"
@@ -30,6 +30,12 @@ const settingsGroups = [
         sub: "Add or edit residences",
         icon: Home,
         href: "/homes",
+      },
+      {
+        label: "Dish Repertoire",
+        sub: "Reusable dishes, menus & shopping",
+        icon: ChefHat,
+        href: "/dish-library",
       },
     ],
   },

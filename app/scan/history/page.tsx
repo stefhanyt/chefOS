@@ -1,16 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
 import AppShell from "@/components/AppShell"
-import PageHeader from "@/components/PageHeader"
+import MobileTopBar from "@/components/MobileTopBar"
 import { createClient } from "@/lib/supabase/client"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { fetchBarcodeScans } from "@/lib/supabase/list-fetch"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
 import type { BarcodeScan, Home } from "@/lib/types"
-import { ChevronLeft } from "lucide-react"
 import ErrorBanner from "@/components/ErrorBanner"
 import EmptyState from "@/components/EmptyState"
 import { SkeletonList } from "@/components/Skeleton"
@@ -58,18 +56,15 @@ export default function ScanHistoryPage() {
 
   return (
     <AppShell>
-      <Link
-        href="/scan"
-        className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-navy-light"
-      >
-        <ChevronLeft size={16} />
-        Back to Scan
-      </Link>
-
-      <PageHeader
+      <MobileTopBar
+        backHref="/scan"
+        backLabel="Scan"
         title="Scan History"
-        subtitle={loading ? "Loading…" : `${scans.length} recent scans`}
       />
+
+      <p className="mb-7 text-sm text-stone-500">
+        {loading ? "Loading…" : `${scans.length} recent scans`}
+      </p>
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />

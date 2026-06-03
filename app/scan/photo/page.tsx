@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
-import { ChevronLeft, Check, Loader2, AlertCircle } from "lucide-react"
+import MobileTopBar from "@/components/MobileTopBar"
+import { Check, Loader2, AlertCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
@@ -229,17 +230,10 @@ export default function PhotoScanPage() {
 
   return (
     <AppShell>
-      <Link
-        href="/dashboard"
-        className="mb-4 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-navy-light"
-      >
-        <ChevronLeft size={16} />
-        Back
-      </Link>
+      <MobileTopBar backHref="/dashboard" title="Photo Scan" />
 
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Photo Scan</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="text-sm text-slate-500">
           {step === "upload" && "Photograph your groceries — AI identifies every item"}
           {step === "analyzing" && "Identifying products from your photo…"}
           {step === "review" && `${items.length} items found — confirm each one`}

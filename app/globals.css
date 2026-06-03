@@ -11,7 +11,10 @@
     --color-border: #e8e4dc;
     /* Bottom nav + scroll reserve (see AppShell) */
     --app-nav-bar-height: 4.25rem;
-    --app-nav-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --app-safe-top: env(safe-area-inset-top, 0px);
+    --app-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --app-nav-safe-bottom: var(--app-safe-bottom);
+    --app-content-top: calc(var(--app-safe-top) + 1rem);
     --app-nav-offset: calc(var(--app-nav-bar-height) + var(--app-nav-safe-bottom));
     --app-fab-offset: calc(var(--app-nav-offset) + 0.75rem);
   }
@@ -27,6 +30,7 @@
     overflow-x: hidden;
     min-height: 100dvh;
     min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     @apply bg-ivory text-charcoal antialiased;
   }
 
@@ -116,8 +120,77 @@
     max-width: 28rem;
     padding-left: 1.25rem;
     padding-right: 1.25rem;
-    padding-top: 1.5rem;
+    padding-top: var(--app-content-top);
     padding-bottom: var(--app-nav-offset);
+  }
+
+  /* First-child top bar: owns safe-area top spacing (avoids double padding) */
+  .app-shell-content:has(> .mobile-safe-header:first-child) {
+    padding-top: 0;
+  }
+
+  .mobile-safe-header {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 16px);
+    min-height: calc(64px + env(safe-area-inset-top, 0px));
+    margin-left: -1.25rem;
+    margin-right: -1.25rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  .mobile-top-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .mobile-top-bar__title {
+    line-height: 1.25;
+  }
+
+  .mobile-header-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Scan review: scroll room above sticky save bar */
+  .scan-form-scroll-pad {
+    padding-bottom: calc(6.5rem + var(--app-nav-offset));
+  }
+
+  .scan-sticky-footer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--app-nav-offset);
+    z-index: 45;
+    pointer-events: none;
+    padding-left: max(1.25rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1.25rem, env(safe-area-inset-right, 0px));
+  }
+
+  .scan-sticky-footer__inner {
+    pointer-events: auto;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 28rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border-top: 1px solid rgb(231 229 228 / 0.8);
+    background: rgb(255 252 248 / 0.95);
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Standalone back link row (no full top bar) */
+  .mobile-safe-back {
+    display: inline-flex;
+    margin-left: -0.25rem;
+    margin-bottom: 1rem;
   }
 
   .app-bottom-nav {
@@ -137,15 +210,15 @@
   .chef-hero-bleed {
     margin-left: -1.25rem;
     margin-right: -1.25rem;
-    margin-top: -1.5rem;
+    margin-top: calc(-1 * var(--app-content-top));
     padding-left: 1.25rem;
     padding-right: 1.25rem;
-    padding-top: 1.5rem;
+    padding-top: var(--app-content-top);
   }
 
   @media (orientation: landscape) and (max-height: 32rem) {
-    .app-shell-content {
-      padding-top: 0.75rem;
+    :root {
+      --app-content-top: calc(var(--app-safe-top) + 0.75rem);
     }
 
     .chef-hero-bleed {

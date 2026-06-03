@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import AppShell from "@/components/AppShell"
+import MobileTopBar from "@/components/MobileTopBar"
 import StatusBadge, { pantryStatusType, mealStatusType } from "@/components/StatusBadge"
 import SheetModal from "@/components/SheetModal"
 import FormField from "@/components/FormField"
@@ -21,7 +22,6 @@ import type {
 } from "@/lib/types"
 import {
   MapPin,
-  ChevronLeft,
   Users,
   Package,
   ShoppingCart,
@@ -151,14 +151,7 @@ export default function HomeDetailPage({
 
   return (
     <AppShell>
-      {/* BACK */}
-      <Link
-        href="/homes"
-        className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-navy-light"
-      >
-        <ChevronLeft size={16} />
-        All Homes
-      </Link>
+      <MobileTopBar backHref="/homes" backLabel="All Homes" />
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />

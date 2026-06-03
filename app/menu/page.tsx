@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import AppShell from "@/components/AppShell"
+import MobileTopBar from "@/components/MobileTopBar"
 import PageHeader from "@/components/PageHeader"
 import AddMenuDishModal from "@/components/AddMenuDishModal"
 import ErrorBanner from "@/components/ErrorBanner"
@@ -213,7 +214,7 @@ export default function MenuPage() {
     setDishLibrary((prev) =>
       [...prev, dish].sort((a, b) => a.name.localeCompare(b.name)),
     )
-    showSuccess(`"${dish.name}" added to dish library`)
+    showSuccess(`"${dish.name}" added to dish repertoire`)
     return dish
   }
 
@@ -423,16 +424,14 @@ export default function MenuPage() {
     const dm = dayMenu(selectedDay)
     return (
       <AppShell>
-        <button
-          onClick={() => setView("week")}
-          className="mb-4 flex items-center gap-1.5 text-sm font-bold text-navy-light"
-        >
-          <ChevronLeft size={16} /> Week View
-        </button>
-        <PageHeader
+        <MobileTopBar
+          onBack={() => setView("week")}
+          backLabel="Week"
           title={MENU_DAYS[selectedDay]}
-          subtitle={`${formatMenuDate(dates[selectedDay])} · ${home.name}`}
         />
+        <p className="mb-7 text-sm text-stone-500">
+          {formatMenuDate(dates[selectedDay])} · {home.name}
+        </p>
         {MENU_CATEGORIES.map((cat) => {
           const dishes = dm[cat] ?? []
           return (
@@ -454,7 +453,7 @@ export default function MenuPage() {
                   onClick={() => openAddModal(selectedDay, cat)}
                   className="w-full rounded-2xl border border-dashed border-stone-200/60 bg-slate-50 px-4 py-3.5 text-left text-sm text-slate-400"
                 >
-                  No {cat.toLowerCase()} — tap to add from library
+                  No {cat.toLowerCase()} — tap to add from repertoire
                 </button>
               ) : (
                 dishes.map((entry) => (
@@ -469,7 +468,7 @@ export default function MenuPage() {
                         </p>
                         {entry.dish_id && (
                           <p className="mb-3 text-[10px] font-medium uppercase tracking-wider text-stone-400">
-                            From dish library
+                            From dish repertoire
                           </p>
                         )}
                         {!entry.dish_id && <div className="mb-3" />}

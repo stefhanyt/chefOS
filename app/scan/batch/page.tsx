@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import MobileTopBar from "@/components/MobileTopBar"
 import ScanSourceBanner from "@/components/ScanSourceBanner"
-import { ChevronLeft, Trash2, Check, Loader2, ScanLine, AlertCircle } from "lucide-react"
+import ScanProductFields from "@/components/ScanProductFields"
+import ScanStickyFooter from "@/components/ScanStickyFooter"
+import { normalizeScanQuantityDisplay, parseScanQuantityForSave } from "@/lib/scan-form-options"
+import { Trash2, Check, Loader2, ScanLine, AlertCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
@@ -124,7 +128,7 @@ export default function BatchScanPage() {
         barcode: code,
         productName: "",
         brand: "",
-        quantity: "",
+        quantity: "1",
         unit: "",
         category: "Other",
         location: "",
@@ -161,7 +165,7 @@ export default function BatchScanPage() {
               ...i,
               productName: result.fields.productName,
               brand: result.fields.brand,
-              quantity: result.fields.quantity,
+              quantity: normalizeScanQuantityDisplay(result.fields.quantity),
               unit: result.fields.unit,
               category: result.fields.category,
               lookupSource: result.source,
@@ -206,7 +210,7 @@ export default function BatchScanPage() {
 
     const rows = valid.map((i) => ({
       name: i.productName.trim(),
-      quantity: Number(i.quantity) || 0,
+      quantity: parseScanQuantityForSave(i.quantity),
       unit: i.unit.trim(),
       storage_location: i.location.trim(),
       category: i.category.trim() || "Other",
@@ -243,7 +247,7 @@ export default function BatchScanPage() {
         user_id: userId,
         barcode: i.barcode,
         product_name: i.productName.trim(),
-        quantity: Number(i.quantity) || 0,
+        quantity: parseScanQuantityForSave(i.quantity),
         unit: i.unit.trim(),
         storage_location: i.location.trim(),
         scan_mode: "batch" as const,
@@ -290,19 +294,15 @@ export default function BatchScanPage() {
 
   return (
     <AppShell>
-      <div className="mb-4 flex items-center gap-3">
-        <Link
-          href="/dashboard"
-          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-navy-light"
-        >
-          <ChevronLeft size={16} />
-          Back
-        </Link>
-        <h1 className="text-xl font-semibold text-slate-900">Batch Scan</h1>
-        <span className="ml-auto rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-          {items.length} scanned
-        </span>
-      </div>
+      <MobileTopBar
+        backHref="/dashboard"
+        title="Batch Scan"
+        trailing={
+          <span className="mobile-header-button inline-flex items-center justify-center rounded-full bg-blue-100 px-3 text-xs font-semibold text-blue-700">
+            {items.length}
+          </span>
+        }
+      />
 
       {errorKind !== "none" && (
         <div
@@ -372,7 +372,7 @@ export default function BatchScanPage() {
       )}
 
       {items.length > 0 && (
-        <div className="mb-4 space-y-3">
+        <div className="scan-form-scroll-pad mb-4 space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700">
             Review Items
           </h2>
@@ -401,43 +401,27 @@ export default function BatchScanPage() {
               ) : (
                 <div className="space-y-3">
                   <ScanSourceBanner source={item.lookupSource} />
-                  <input
-                    type="text"
-                    value={item.productName}
-                    onChange={(e) => updateItem(item.id, "productName", e.target.value)}
-                    placeholder="Product name"
-                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    type="text"
-                    value={item.brand}
-                    onChange={(e) => updateItem(item.id, "brand", e.target.value)}
-                    placeholder="Brand (optional)"
-                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
-                      placeholder="Qty"
-                      className="rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    />
-                    <input
-                      type="text"
-                      value={item.unit}
-                      onChange={(e) => updateItem(item.id, "unit", e.target.value)}
-                      placeholder="Unit"
-                      className="rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                    />
-                  </div>
-                  <input
-                    type="text"
-                    value={item.category}
-                    onChange={(e) => updateItem(item.id, "category", e.target.value)}
-                    placeholder="Category"
-                    className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  <ScanProductFields
+                    variant="compact"
+                    values={{
+                      productName: item.productName,
+                      brand: item.brand,
+                      quantity: item.quantity,
+                      unit: item.unit,
+                      category: item.category,
+                    }}
+                    onChange={(patch) => {
+                      if (patch.productName !== undefined)
+                        updateItem(item.id, "productName", patch.productName)
+                      if (patch.brand !== undefined)
+                        updateItem(item.id, "brand", patch.brand)
+                      if (patch.quantity !== undefined)
+                        updateItem(item.id, "quantity", patch.quantity)
+                      if (patch.unit !== undefined)
+                        updateItem(item.id, "unit", patch.unit)
+                      if (patch.category !== undefined)
+                        updateItem(item.id, "category", patch.category)
+                    }}
                   />
                   <input
                     type="text"
@@ -453,28 +437,28 @@ export default function BatchScanPage() {
         </div>
       )}
 
-      <div className="flex gap-3">
-        {!scanning && (
-          <button
-            type="button"
-            onClick={startScanner}
-            className="flex min-h-[44px] items-center gap-2 rounded-2xl border border-stone-200/60 bg-white px-5 text-sm font-bold text-slate-600 shadow-sm"
-          >
-            <ScanLine size={16} />
-            Scan More
-          </button>
-        )}
-        {items.length > 0 && (
+      {items.length > 0 && (
+        <ScanStickyFooter>
+          {!scanning && (
+            <button
+              type="button"
+              onClick={startScanner}
+              className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
+            >
+              <ScanLine size={16} />
+              Scan More
+            </button>
+          )}
           <button
             type="button"
             onClick={handleAddAll}
-            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-2xl bg-navy text-sm font-semibold text-white shadow-lg shadow-blue-600/30"
+            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft"
           >
             <Check size={16} />
             Add All to Pantry ({items.length})
           </button>
-        )}
-      </div>
+        </ScanStickyFooter>
+      )}
     </AppShell>
   )
 }

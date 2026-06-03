@@ -103,9 +103,30 @@ export interface DishLibraryItem {
   reheating_instructions: string
   tags: string[]
   notes?: string
+  description?: string | null
+  meal_category?: string | null
+  cuisine_style?: string | null
+  dietary_tags?: string[]
+  instructions?: string | null
+  default_servings?: number
+  is_active?: boolean
+  residence_notes?: Record<string, string> | null
   created_at: string
   updated_at: string
   archived_at?: string | null
+  dish_ingredients?: DishIngredient[]
+}
+
+export interface DishIngredient {
+  id: string
+  dish_id: string
+  sort_order: number
+  name: string
+  quantity: number
+  unit?: string | null
+  category?: string | null
+  notes?: string | null
+  created_at: string
 }
 
 export interface PreparedMeal {

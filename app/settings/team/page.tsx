@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import MobileTopBar from "@/components/MobileTopBar"
 import PageHeader from "@/components/PageHeader"
 import StatusBadge from "@/components/StatusBadge"
 import ErrorBanner from "@/components/ErrorBanner"
@@ -12,7 +13,7 @@ import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { useToast } from "@/components/ToastProvider"
 import type { Home, HomeMember, MemberRole } from "@/lib/types"
-import { ChevronLeft, Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2 } from "lucide-react"
 import { ui } from "@/lib/ui"
 import SheetModal from "@/components/SheetModal"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
@@ -149,16 +150,9 @@ export default function TeamPage() {
 
   return (
     <AppShell>
-      <Link
-        href="/settings"
-        className="mb-5 flex items-center gap-1.5 text-sm font-semibold text-navy-light"
-      >
-        <ChevronLeft size={16} />
-        Settings
-      </Link>
+      <MobileTopBar backHref="/settings" backLabel="Settings" title="Team & Access" />
 
       <PageHeader
-        title="Team & Access"
         subtitle={loading ? "Loading…" : "Manage staff per residence"}
         action={
           <button

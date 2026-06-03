@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
+import MobileTopBar from "@/components/MobileTopBar"
 import ScanSourceBanner from "@/components/ScanSourceBanner"
-import { ChevronLeft, Check, Loader2, AlertCircle, Image } from "lucide-react"
+import ScanProductFields from "@/components/ScanProductFields"
+import ScanStickyFooter from "@/components/ScanStickyFooter"
+import { parseScanQuantityForSave } from "@/lib/scan-form-options"
+import { Check, Loader2, AlertCircle, Image } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
@@ -34,7 +38,7 @@ export default function ScanPage() {
   const [barcode, setBarcode] = useState("")
   const [productName, setProductName] = useState("")
   const [brand, setBrand] = useState("")
-  const [quantity, setQuantity] = useState("")
+  const [quantity, setQuantity] = useState("1")
   const [unit, setUnit] = useState("")
   const [category, setCategory] = useState("Other")
   const [notes, setNotes] = useState("")
@@ -181,6 +185,7 @@ export default function ScanPage() {
     } catch {
       setBarcode("")
       setLookupSource("manual")
+      setQuantity("1")
       setScanState("review")
     }
   }
@@ -203,7 +208,7 @@ export default function ScanPage() {
 
     const { error: pantryError } = await supabase.from("pantry_items").insert({
       name: productName.trim(),
-      quantity: Number(quantity) || 0,
+      quantity: parseScanQuantityForSave(quantity),
       unit: unit.trim(),
       storage_location: location.trim(),
       category: category.trim() || "Other",
@@ -244,7 +249,7 @@ export default function ScanPage() {
       user_id: userId,
       barcode: barcode || null,
       product_name: productName.trim(),
-      quantity: Number(quantity) || 0,
+      quantity: parseScanQuantityForSave(quantity),
       unit: unit.trim(),
       storage_location: location.trim(),
       scan_mode: "single",
@@ -259,7 +264,7 @@ export default function ScanPage() {
     setProductName("")
     setBrand("")
     setBarcode("")
-    setQuantity("")
+    setQuantity("1")
     setUnit("")
     setCategory("Other")
     setNotes("")
@@ -272,22 +277,18 @@ export default function ScanPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          href="/dashboard"
-          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm font-bold text-navy-light"
-        >
-          <ChevronLeft size={16} />
-          Back
-        </Link>
-        <h1 className="font-display text-xl font-semibold text-charcoal">Scan item</h1>
-        <Link
-          href="/scan/history"
-          className="ml-auto text-xs font-bold text-navy-light"
-        >
-          History
-        </Link>
-      </div>
+      <MobileTopBar
+        backHref="/dashboard"
+        title="Scan item"
+        trailing={
+          <Link
+            href="/scan/history"
+            className="mobile-header-button inline-flex items-center justify-center rounded-xl text-xs font-bold text-navy-light"
+          >
+            History
+          </Link>
+        }
+      />
 
       {errorKind !== "none" && (
         <div
@@ -361,6 +362,7 @@ export default function ScanPage() {
             onClick={() => {
               stopScanner()
               setLookupSource("manual")
+              setQuantity("1")
               setScanState("review")
             }}
             className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
@@ -380,99 +382,70 @@ export default function ScanPage() {
       )}
 
       {scanState === "review" && (
-        <div className="space-y-4">
-          <ScanSourceBanner source={lookupSource} barcode={barcode || undefined} />
+        <>
+          <div className="scan-form-scroll-pad space-y-4">
+            <ScanSourceBanner source={lookupSource} barcode={barcode || undefined} />
 
-          <Field
-            label="Product Name"
-            value={productName}
-            onChange={setProductName}
-            placeholder="e.g. Organic Eggs"
-          />
-          <Field
-            label="Brand (optional)"
-            value={brand}
-            onChange={setBrand}
-            placeholder="e.g. Kirkland"
-          />
-
-          {!barcode && (
-            <Field
-              label="Barcode (optional)"
-              value={barcode}
-              onChange={setBarcode}
-              placeholder="Enter barcode number"
+            <ScanProductFields
+              values={{ productName, brand, quantity, unit, category, notes }}
+              onChange={(patch) => {
+                if (patch.productName !== undefined) setProductName(patch.productName)
+                if (patch.brand !== undefined) setBrand(patch.brand)
+                if (patch.quantity !== undefined) setQuantity(patch.quantity)
+                if (patch.unit !== undefined) setUnit(patch.unit)
+                if (patch.category !== undefined) setCategory(patch.category)
+                if (patch.notes !== undefined) setNotes(patch.notes)
+              }}
+              barcode={barcode}
+              onBarcodeChange={setBarcode}
+              showCatalogNotes
             />
-          )}
 
-          <div className="grid grid-cols-2 gap-3">
+            {homes.length > 0 && (
+              <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Residence
+                </label>
+                <select
+                  value={homeId}
+                  onChange={(e) => setHomeId(e.target.value)}
+                  className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-gold/15"
+                >
+                  {homes.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <Field
-              label="Quantity"
-              value={quantity}
-              onChange={setQuantity}
-              placeholder="0"
-              type="number"
+              label="Storage Location"
+              value={location}
+              onChange={setLocation}
+              placeholder="e.g. Fridge"
             />
-            <Field label="Unit" value={unit} onChange={setUnit} placeholder="e.g. dozen" />
           </div>
 
-          <Field
-            label="Category"
-            value={category}
-            onChange={setCategory}
-            placeholder="e.g. Dairy"
-          />
-
-          {homes.length > 0 && (
-            <div>
-              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Residence
-              </label>
-              <select
-                value={homeId}
-                onChange={(e) => setHomeId(e.target.value)}
-                className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-gold/15"
-              >
-                {homes.map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {h.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <Field
-            label="Storage Location"
-            value={location}
-            onChange={setLocation}
-            placeholder="e.g. Fridge"
-          />
-
-          <Field
-            label="Catalog notes (optional)"
-            value={notes}
-            onChange={setNotes}
-            placeholder="Saved for next scan of this barcode"
-          />
-
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!productName.trim()}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft disabled:opacity-50"
-          >
-            Save to Pantry
-          </button>
-
-          <button
-            type="button"
-            onClick={resetForAnotherScan}
-            className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
-          >
-            Scan Another
-          </button>
-        </div>
+          <ScanStickyFooter>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!productName.trim()}
+              className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-navy text-sm font-semibold text-white shadow-soft disabled:opacity-50"
+            >
+              Save to Pantry
+            </button>
+            <button
+              type="button"
+              onClick={resetForAnotherScan}
+              className="flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-stone-200/60 bg-white text-sm font-bold text-slate-600"
+            >
+              Scan Another
+            </button>
+          </ScanStickyFooter>
+        </>
       )}
 
       {scanState === "saved" && (
@@ -510,13 +483,11 @@ function Field({
   value,
   onChange,
   placeholder,
-  type = "text",
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   placeholder: string
-  type?: string
 }) {
   return (
     <div>
@@ -524,8 +495,7 @@ function Field({
         {label}
       </label>
       <input
-        type={type}
-        inputMode={type === "number" ? "decimal" : undefined}
+        type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

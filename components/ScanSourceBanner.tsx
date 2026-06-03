@@ -34,6 +34,11 @@ export default function ScanSourceBanner({
       )}
       <span>
         {message}
+        {isCatalog ? (
+          <span className="mt-1 block text-xs font-normal text-navy/80">
+            Saved from your last correction.
+          </span>
+        ) : null}
         {barcode ? (
           <span className="mt-0.5 block font-normal opacity-80">
             Barcode: {barcode}

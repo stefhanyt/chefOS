@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { lookupBarcode, parseProductName } from "@/lib/openfoodfacts"
+import {
+  normalizeScanQuantityDisplay,
+  parseScanQuantityForSave,
+} from "@/lib/scan-form-options"
 import { logSupabaseError } from "@/lib/supabase/errors"
 import type { OpenFoodFactsProduct, ProductCatalog } from "@/lib/types"
 
@@ -30,7 +34,7 @@ export function emptyScannedProductFields(): ScannedProductFields {
   return {
     productName: "",
     brand: "",
-    quantity: "",
+    quantity: "1",
     unit: "",
     category: "Other",
     notes: "",
@@ -38,11 +42,12 @@ export function emptyScannedProductFields(): ScannedProductFields {
 }
 
 function catalogToFields(row: ProductCatalog): ScannedProductFields {
+  const rawQty =
+    row.default_quantity != null ? String(row.default_quantity) : ""
   return {
     productName: row.product_name ?? "",
     brand: row.brand ?? "",
-    quantity:
-      row.default_quantity != null ? String(row.default_quantity) : "",
+    quantity: normalizeScanQuantityDisplay(rawQty),
     unit: row.default_unit ?? "",
     category: row.default_category ?? "Other",
     notes: row.notes ?? "",
@@ -66,7 +71,7 @@ function offToFields(product: OpenFoodFactsProduct): ScannedProductFields {
   return {
     productName: parseProductName(product),
     brand: product.brands?.split(",")[0]?.trim() ?? "",
-    quantity,
+    quantity: normalizeScanQuantityDisplay(quantity),
     unit,
     category,
     notes: "",
@@ -121,7 +126,7 @@ export async function resolveBarcodeProduct(
   return {
     source: "manual",
     barcode: normalized,
-    fields: emptyScannedProductFields(),
+    fields: { ...emptyScannedProductFields(), quantity: "1" },
   }
 }
 
@@ -140,18 +145,14 @@ export async function upsertProductCatalog(
     return { error: null }
   }
 
-  const qty = input.quantity.trim()
-  const defaultQuantity = qty.length > 0 ? Number(qty) : null
+  const defaultQuantity = parseScanQuantityForSave(input.quantity)
 
   const { error } = await supabase.from("product_catalog").upsert(
     {
       barcode,
       product_name: input.productName.trim(),
       brand: input.brand.trim() || null,
-      default_quantity:
-        defaultQuantity != null && !Number.isNaN(defaultQuantity)
-          ? defaultQuantity
-          : null,
+      default_quantity: defaultQuantity,
       default_unit: input.unit.trim() || null,
       default_category: input.category.trim() || "Other",
       notes: input.notes.trim() || null,
@@ -178,7 +179,7 @@ export function applyFieldsToScanForm(
 ): void {
   setters.setProductName(fields.productName)
   setters.setBrand(fields.brand)
-  setters.setQuantity(fields.quantity)
+  setters.setQuantity(normalizeScanQuantityDisplay(fields.quantity))
   setters.setUnit(fields.unit)
   setters.setCategory(fields.category)
   setters.setNotes(fields.notes)
