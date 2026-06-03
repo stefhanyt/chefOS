@@ -83,6 +83,22 @@ supabase db push
 
 Otherwise: **Dashboard → SQL → New query**, paste each migration, run.
 
+## PostgREST: `home_members` + `profiles` embed
+
+`home_members` references `profiles` twice (`user_id`, `invited_by`). A bare `profile:profiles(...)` fails with *more than one relationship was found*.
+
+Use the **member user** FK, not `invited_by`:
+
+```sql
+-- In app (lib/supabase/team.ts):
+profile:profiles!home_members_user_id_fkey(id, display_name, email)
+```
+
+**Find the exact FK name in your project:**
+
+1. Search migrations/SQL for `home_members_user_id_fkey`, or
+2. Supabase **Database → Tables → home_members → Foreign keys** — pick the row where `user_id` → `profiles.id`.
+
 ## Data safety
 
 - No `DROP TABLE` or data wipes in these migrations.
