@@ -26,10 +26,26 @@ import EmptyState from "@/components/EmptyState"
 import NoHomesBanner from "@/components/NoHomesBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import { useResidence, filterByActiveHome } from "@/contexts/ResidenceContext"
+import CurrentResidenceBar from "@/components/CurrentResidenceBar"
+import ConfirmModal from "@/components/ConfirmModal"
+import {
+  activitySummary,
+  getActorDisplayName,
+  logResidenceActivity,
+} from "@/lib/activity-log"
+import { fetchResidenceTeam } from "@/lib/supabase/home-team"
 
 export default function ShoppingListPage() {
   const { showSuccess, showError } = useToast()
+  const { merged, accessForHome } = useHomeAccess()
+  const { activeHomeId, activeHome } = useResidence()
   const [items, setItems] = useState<ShoppingItem[]>([])
+  const [removeTarget, setRemoveTarget] = useState<ShoppingItem | null>(null)
+  const [clearConfirm, setClearConfirm] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -128,8 +144,12 @@ export default function ShoppingListPage() {
     }
   }, [homes])
 
-  const open = items.filter((i) => i.status === "Open")
-  const purchased = items.filter((i) => i.status === "Purchased")
+  const scoped = useMemo(
+    () => filterByActiveHome(items, activeHomeId),
+    [items, activeHomeId],
+  )
+  const open = scoped.filter((i) => i.status === "Open")
+  const purchased = scoped.filter((i) => i.status === "Purchased")
 
   function handlePurchase(id: string) {
     const item = items.find((i) => i.id === id)
@@ -198,6 +218,15 @@ export default function ShoppingListPage() {
     setPurchaseItem(null)
     setNewQty("")
     showSuccess("Item marked as purchased")
+    const userId = await getAuthUserId(supabase)
+    if (userId) {
+      const profile = await getActorDisplayName(supabase, userId)
+      await logResidenceActivity(
+        supabase,
+        purchaseItem.home_id,
+        activitySummary(profile, `marked ${purchaseItem.name} as bought`),
+      )
+    }
   }
 
   async function handleAddItem(form: {
@@ -207,6 +236,7 @@ export default function ShoppingListPage() {
     priority: Priority
     notes: string
     home_id: string
+    assigned_to: string
   }) {
     const supabase = createClient()
     if (!supabase) {
@@ -220,7 +250,12 @@ export default function ShoppingListPage() {
     }
     const { data: inserted, error } = await supabase
       .from("shopping_items")
-      .insert({ ...form, status: "Open", added_by: userId })
+      .insert({
+        ...form,
+        status: "Open",
+        added_by: userId,
+        assigned_to: form.assigned_to || null,
+      })
       .select("*")
       .single()
     if (error) {
@@ -247,27 +282,93 @@ export default function ShoppingListPage() {
     }
     await loadItems({ silent: true })
     setShowAdd(false)
+    const profile = await getActorDisplayName(supabase, userId)
+    await logResidenceActivity(
+      supabase,
+      form.home_id,
+      activitySummary(profile, `added ${form.name.trim()} to shopping list`),
+    )
     showSuccess("Added to shopping list")
   }
 
-  async function handleRemove(item: ShoppingItem) {
-    if (!confirm(`Remove "${item.name}" from the shopping list?`)) return
+  async function confirmRemoveItem() {
+    if (!removeTarget) return
+    setRemoving(true)
     const supabase = createClient()
     if (!supabase) {
       showError(CONFIG_ERROR)
+      setRemoving(false)
       return
     }
     const { error } = await supabase
       .from("shopping_items")
       .update({ archived_at: new Date().toISOString(), status: "Archived" })
-      .eq("id", item.id)
+      .eq("id", removeTarget.id)
     if (error) {
       logSupabaseError("shopping archive", error)
       showError(getSupabaseErrorMessage(error))
+      setRemoving(false)
       return
     }
-    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    const userId = await getAuthUserId(supabase)
+    if (userId) {
+      const profile = await getActorDisplayName(supabase, userId)
+      await logResidenceActivity(
+        supabase,
+        removeTarget.home_id,
+        activitySummary(profile, `removed ${removeTarget.name} from shopping list`),
+      )
+    }
+    setItems((prev) => prev.filter((i) => i.id !== removeTarget.id))
     showSuccess("Item removed")
+    setRemoveTarget(null)
+    setRemoving(false)
+  }
+
+  async function confirmClearList() {
+    const targetHomeId = activeHomeId
+    if (!targetHomeId) {
+      showError("Select a residence to clear its shopping list.")
+      setClearConfirm(false)
+      return
+    }
+    setClearing(true)
+    const supabase = createClient()
+    if (!supabase) {
+      setClearing(false)
+      return
+    }
+    const now = new Date().toISOString()
+    const toClear = items.filter(
+      (i) => i.home_id === targetHomeId && i.status === "Open",
+    )
+    const { error } = await supabase
+      .from("shopping_items")
+      .update({ archived_at: now, status: "Archived" })
+      .eq("home_id", targetHomeId)
+      .eq("status", "Open")
+    setClearing(false)
+    setClearConfirm(false)
+    if (error) {
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    setItems((prev) =>
+      prev.filter((i) => !(i.home_id === targetHomeId && i.status === "Open")),
+    )
+    const userId = await getAuthUserId(supabase)
+    if (userId) {
+      const profile = await getActorDisplayName(supabase, userId)
+      await logResidenceActivity(
+        supabase,
+        targetHomeId,
+        activitySummary(
+          profile,
+          `cleared ${toClear.length} open shopping item${toClear.length !== 1 ? "s" : ""}`,
+        ),
+      )
+    }
+    showSuccess("Shopping list cleared")
   }
 
   async function handleReopen(item: ShoppingItem) {
@@ -312,23 +413,44 @@ export default function ShoppingListPage() {
             : `${open.length} open · ${purchased.length} purchased`
         }
         action={
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            disabled={!loading && homes.length === 0}
-            className={ui.btnHeader}
-          >
-            <Plus size={15} />
-            Add
-          </button>
+          merged.canEditShopping ? (
+            <div className="flex shrink-0 gap-2">
+              {activeHomeId && open.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setClearConfirm(true)}
+                  className={ui.btnSecondary}
+                >
+                  Clear
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowAdd(true)}
+                disabled={!loading && homes.length === 0}
+                className={ui.btnHeader}
+              >
+                <Plus size={15} />
+                Add
+              </button>
+            </div>
+          ) : undefined
         }
       />
 
       {!loading && homes.length === 0 && <NoHomesBanner />}
+      {!loading && homes.length > 0 && !merged.canViewShopping && (
+        <EmptyState
+          title="View only"
+          message="Your role does not include the shopping list for this residence."
+        />
+      )}
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
+
+      <CurrentResidenceBar />
 
       {loading ? (
         <SkeletonList count={3} className="h-16" />
@@ -346,14 +468,18 @@ export default function ShoppingListPage() {
               {homeName}
             </h2>
             <div className={`${ui.cardInset} px-4`}>
-              {groupItems.map((item) => (
-                <ShoppingItemCard
-                  key={item.id}
-                  item={item}
-                  onPurchase={handlePurchase}
-                  onRemove={handleRemove}
-                />
-              ))}
+              {groupItems.map((item) => {
+                const canEdit =
+                  accessForHome(item.home_id)?.canEditShopping ?? false
+                return (
+                  <ShoppingItemCard
+                    key={item.id}
+                    item={item}
+                    onPurchase={canEdit ? handlePurchase : undefined}
+                    onRemove={canEdit ? setRemoveTarget : undefined}
+                  />
+                )
+              })}
             </div>
           </div>
         ))
@@ -365,11 +491,15 @@ export default function ShoppingListPage() {
             Purchased
           </h2>
           <div className={`${ui.cardInset} px-4 opacity-70`}>
-            {purchased.map((item) => (
+            {purchased.map((item) => {
+              const canEdit =
+                accessForHome(item.home_id)?.canEditShopping ?? false
+              return (
               <div key={item.id} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <ShoppingItemCard item={item} />
                 </div>
+                {canEdit && (
                 <button
                   type="button"
                   onClick={() => handleReopen(item)}
@@ -377,8 +507,10 @@ export default function ShoppingListPage() {
                 >
                   Reopen
                 </button>
+                )}
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -421,9 +553,45 @@ export default function ShoppingListPage() {
         </SheetModal>
       )}
 
+      <ConfirmModal
+        open={Boolean(removeTarget)}
+        title="Remove shopping item?"
+        message={
+          removeTarget ? (
+            <>Remove <strong>{removeTarget.name}</strong> from the list?</>
+          ) : null
+        }
+        confirmLabel="Remove"
+        destructive
+        loading={removing}
+        onClose={() => !removing && setRemoveTarget(null)}
+        onConfirm={confirmRemoveItem}
+      />
+
+      <ConfirmModal
+        open={clearConfirm}
+        title="Clear shopping list?"
+        message={
+          activeHome ? (
+            <>
+              Archive all open items for <strong>{activeHome.name}</strong>? Purchased
+              items are kept.
+            </>
+          ) : (
+            "Select a single residence first."
+          )
+        }
+        confirmLabel="Clear open items"
+        destructive
+        loading={clearing}
+        onClose={() => !clearing && setClearConfirm(false)}
+        onConfirm={confirmClearList}
+      />
+
       {showAdd && (
         <AddShoppingModal
           homes={homes}
+          preferredHomeId={activeHomeId}
           onClose={() => setShowAdd(false)}
           onSave={handleAddItem}
         />
@@ -434,10 +602,12 @@ export default function ShoppingListPage() {
 
 function AddShoppingModal({
   homes,
+  preferredHomeId,
   onSave,
   onClose,
 }: {
   homes: Home[]
+  preferredHomeId?: string | null
   onSave: (form: {
     name: string
     quantity_needed: string
@@ -445,6 +615,7 @@ function AddShoppingModal({
     priority: Priority
     notes: string
     home_id: string
+    assigned_to: string
   }) => void | Promise<void>
   onClose: () => void
 }) {
@@ -454,13 +625,31 @@ function AddShoppingModal({
   const [category, setCategory] = useState("")
   const [priority, setPriority] = useState<Priority>("Normal")
   const [notes, setNotes] = useState("")
-  const [homeId, setHomeId] = useState("")
+  const [homeId, setHomeId] = useState(preferredHomeId ?? "")
+  const [assignedTo, setAssignedTo] = useState("")
+  const [team, setTeam] = useState<{ user_id: string; display_name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [showNotes, setShowNotes] = useState(false)
 
   useEffect(() => {
-    if (homes.length > 0 && !homeId) setHomeId(homes[0].id)
-  }, [homes, homeId])
+    if (preferredHomeId) setHomeId(preferredHomeId)
+    else if (homes.length === 1) setHomeId(homes[0].id)
+  }, [homes, preferredHomeId])
+
+  useEffect(() => {
+    async function loadTeam() {
+      const home = homes.find((h) => h.id === homeId)
+      if (!homeId || !home) {
+        setTeam([])
+        return
+      }
+      const supabase = createClient()
+      if (!supabase) return
+      const members = await fetchResidenceTeam(supabase, homeId, home.owner_id)
+      setTeam(members)
+    }
+    loadTeam()
+  }, [homeId, homes])
 
   const validation = useMemo(() => {
     const missing: string[] = []
@@ -482,6 +671,7 @@ function AddShoppingModal({
         priority,
         notes: notes.trim(),
         home_id: homeId,
+        assigned_to: assignedTo,
       })
     } finally {
       setSaving(false)
@@ -527,6 +717,23 @@ function AddShoppingModal({
           </p>
         )}
         <FormField label="Item Name" value={name} onChange={setName} placeholder="e.g. Milk" required />
+        {team.length > 0 && (
+          <div>
+            <label className="chef-label">Assigned to (optional)</label>
+            <select
+              value={assignedTo}
+              onChange={(e) => setAssignedTo(e.target.value)}
+              className="chef-input"
+            >
+              <option value="">Unassigned</option>
+              {team.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <FormField label="Quantity Needed" value={qtyNeeded} onChange={setQtyNeeded} placeholder="e.g. 2L" />
         <FormField label="Category (optional)" value={category} onChange={setCategory} placeholder="e.g. Dairy" />
         <div>

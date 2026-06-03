@@ -21,6 +21,9 @@ import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
 import { useBarcodeScanner } from "@/lib/use-barcode-scanner"
 import type { Home } from "@/lib/types"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import EmptyState from "@/components/EmptyState"
+import { ui } from "@/lib/ui"
 
 interface ScannedItem {
   id: string
@@ -37,6 +40,7 @@ interface ScannedItem {
 
 export default function BatchScanPage() {
   const { showSuccess, showError } = useToast()
+  const { merged, loading: accessLoading } = useHomeAccess()
   const { videoRef, start: startCamera, release: releaseCamera } = useBarcodeScanner()
   const scannedCodes = useRef<Set<string>>(new Set())
 
@@ -283,6 +287,23 @@ export default function BatchScanPage() {
             </Link>
           </div>
         </div>
+      </AppShell>
+    )
+  }
+
+  if (!accessLoading && !merged.canUseScan) {
+    return (
+      <AppShell>
+        <MobileTopBar backHref="/dashboard" title="Batch Scan" />
+        <EmptyState
+          title="No scan access"
+          message="Only managers and owners can scan items into the pantry."
+          action={
+            <Link href="/dashboard" className={ui.btnPrimary}>
+              Back to home
+            </Link>
+          }
+        />
       </AppShell>
     )
   }

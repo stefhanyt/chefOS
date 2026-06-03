@@ -42,6 +42,9 @@ export default function ShoppingItemCard({ item, onPurchase, onRemove }: Props) 
           </span>
           <span>{item.quantity_needed}</span>
           <span>· {item.added_by_profile?.display_name ?? "Staff"}</span>
+          {item.assigned_to_profile?.display_name && (
+            <span>· Assigned: {item.assigned_to_profile.display_name}</span>
+          )}
         </div>
       </div>
 

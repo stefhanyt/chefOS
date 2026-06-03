@@ -4,17 +4,38 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Home, ShoppingCart, UtensilsCrossed, Settings, Package } from "lucide-react"
 import { BOTTOM_NAV_CLASS } from "@/lib/app-layout"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
 
-const navItems = [
-  { href: "/dashboard", label: "Home", icon: Home },
-  { href: "/pantry", label: "Pantry", icon: Package },
-  { href: "/shopping-list", label: "Shop", icon: ShoppingCart },
-  { href: "/meals", label: "Meals", icon: UtensilsCrossed },
-  { href: "/settings", label: "More", icon: Settings },
+const allNavItems = [
+  { href: "/dashboard", label: "Home", icon: Home, show: () => true },
+  {
+    href: "/pantry",
+    label: "Pantry",
+    icon: Package,
+    show: (m: { canViewPantry: boolean }) => m.canViewPantry,
+  },
+  {
+    href: "/shopping-list",
+    label: "Shop",
+    icon: ShoppingCart,
+    show: (m: { canViewShopping: boolean }) => m.canViewShopping,
+  },
+  {
+    href: "/meals",
+    label: "Meals",
+    icon: UtensilsCrossed,
+    show: (m: { canViewMeals: boolean }) => m.canViewMeals,
+  },
+  { href: "/settings", label: "More", icon: Settings, show: () => true },
 ]
 
 export default function BottomNav() {
   const pathname = usePathname()
+  const { merged, loading } = useHomeAccess()
+
+  const navItems = loading
+    ? allNavItems
+    : allNavItems.filter((item) => item.show(merged))
 
   return (
     <nav

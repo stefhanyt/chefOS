@@ -34,6 +34,15 @@ import EmptyState from "@/components/EmptyState"
 import NoHomesBanner from "@/components/NoHomesBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import { useResidence, filterByActiveHome } from "@/contexts/ResidenceContext"
+import CurrentResidenceBar from "@/components/CurrentResidenceBar"
+import ConfirmModal from "@/components/ConfirmModal"
+import {
+  activitySummary,
+  getActorDisplayName,
+  logResidenceActivity,
+} from "@/lib/activity-log"
 
 const STATUS_FILTERS: (PantryStatus | "All")[] = [
   "All",
@@ -45,7 +54,11 @@ const STATUS_FILTERS: (PantryStatus | "All")[] = [
 
 export default function PantryPage() {
   const { showSuccess, showError } = useToast()
+  const { merged, accessForHome } = useHomeAccess()
+  const { activeHomeId } = useResidence()
   const [items, setItems] = useState<PantryItem[]>([])
+  const [removeTarget, setRemoveTarget] = useState<PantryItem | null>(null)
+  const [removing, setRemoving] = useState(false)
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -93,20 +106,25 @@ export default function PantryPage() {
     load()
   }, [retryCount, load])
 
+  const scopedItems = useMemo(
+    () => filterByActiveHome(items, activeHomeId),
+    [items, activeHomeId],
+  )
+
   const filtered = useMemo(() => {
-    const next = items.filter((item) => {
+    const next = scopedItems.filter((item) => {
       const matchSearch =
         item.name.toLowerCase().includes(search.toLowerCase()) ||
         (item.category ?? "").toLowerCase().includes(search.toLowerCase())
       const matchStatus = statusFilter === "All" || item.status === statusFilter
       return matchSearch && matchStatus
     })
-    logClientFilter("pantry_items", items.length, next.length, {
+    logClientFilter("pantry_items", scopedItems.length, next.length, {
       search,
       statusFilter,
     })
     return next
-  }, [items, search, statusFilter])
+  }, [scopedItems, search, statusFilter])
 
   async function handleQuantityChange(id: string, delta: number) {
     const item = items.find((i) => i.id === id)
@@ -166,6 +184,15 @@ export default function PantryPage() {
         )
       }
       await load({ silent: true })
+      const uid = await getAuthUserId(supabase)
+      if (uid) {
+        const profile = await getActorDisplayName(supabase, uid)
+        await logResidenceActivity(
+          supabase,
+          form.home_id,
+          activitySummary(profile, `updated ${form.name.trim()} in pantry`),
+        )
+      }
       showSuccess("Pantry item updated")
       return true
     }
@@ -197,28 +224,48 @@ export default function PantryPage() {
     )[0]
     setItems((prev) => mergeById(prev, row))
     await load({ silent: true })
+    const profile = await getActorDisplayName(supabase, userId)
+    await logResidenceActivity(
+      supabase,
+      form.home_id,
+      activitySummary(profile, `added ${form.name.trim()} to pantry`),
+    )
     showSuccess("Pantry item added")
     return true
   }
 
-  async function handleRemove(item: PantryItem) {
-    if (!confirm(`Remove "${item.name}" from pantry?`)) return
+  async function confirmRemovePantryItem() {
+    if (!removeTarget) return
+    setRemoving(true)
     const supabase = createClient()
     if (!supabase) {
       showError(CONFIG_ERROR)
+      setRemoving(false)
       return
     }
+    const userId = await getAuthUserId(supabase)
     const { error } = await supabase
       .from("pantry_items")
       .update({ archived_at: new Date().toISOString() })
-      .eq("id", item.id)
+      .eq("id", removeTarget.id)
     if (error) {
       logSupabaseError("pantry archive", error)
       showError(getSupabaseErrorMessage(error))
+      setRemoving(false)
       return
     }
-    setItems((prev) => prev.filter((i) => i.id !== item.id))
+    if (userId) {
+      const profile = await getActorDisplayName(supabase, userId)
+      await logResidenceActivity(
+        supabase,
+        removeTarget.home_id,
+        activitySummary(profile, `removed ${removeTarget.name} from pantry`),
+      )
+    }
+    setItems((prev) => prev.filter((i) => i.id !== removeTarget.id))
     showSuccess("Item removed")
+    setRemoveTarget(null)
+    setRemoving(false)
   }
 
   function closeModal() {
@@ -240,23 +287,33 @@ export default function PantryPage() {
             : `${items.length} items${alertCount > 0 ? ` · ${alertCount} alerts` : ""}`
         }
         action={
-          <button
-            type="button"
-            onClick={() => setModalMode("add")}
-            disabled={!loading && homes.length === 0}
-            className={ui.btnHeader}
-          >
-            <Plus size={15} />
-            Add
-          </button>
+          merged.canEditPantry ? (
+            <button
+              type="button"
+              onClick={() => setModalMode("add")}
+              disabled={!loading && homes.length === 0}
+              className={ui.btnHeader}
+            >
+              <Plus size={15} />
+              Add
+            </button>
+          ) : undefined
         }
       />
 
       {!loading && homes.length === 0 && <NoHomesBanner />}
+      {!loading && homes.length > 0 && !merged.canViewPantry && (
+        <EmptyState
+          title="View only"
+          message="Your role does not include pantry access for this residence."
+        />
+      )}
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
+
+      <CurrentResidenceBar />
 
       <SearchAndFilterBar value={search} onChange={setSearch} placeholder="Search pantry…" />
 
@@ -286,19 +343,44 @@ export default function PantryPage() {
           }
         />
       ) : (
-        filtered.map((item) => (
-          <PantryItemCard
-            key={item.id}
-            item={item}
-            onQuantityChange={handleQuantityChange}
-            onEdit={(i) => {
-              setEditingItem(i)
-              setModalMode("edit")
-            }}
-            onRemove={handleRemove}
-          />
-        ))
+        filtered.map((item) => {
+          const canEdit = accessForHome(item.home_id)?.canEditPantry ?? false
+          return (
+            <PantryItemCard
+              key={item.id}
+              item={item}
+              onQuantityChange={canEdit ? handleQuantityChange : undefined}
+              onEdit={
+                canEdit
+                  ? (i) => {
+                      setEditingItem(i)
+                      setModalMode("edit")
+                    }
+                  : undefined
+              }
+              onRemove={canEdit ? setRemoveTarget : undefined}
+            />
+          )
+        })
       )}
+
+      <ConfirmModal
+        open={Boolean(removeTarget)}
+        title="Remove pantry item?"
+        message={
+          removeTarget ? (
+            <>
+              Remove <strong>{removeTarget.name}</strong> from the pantry? This can be
+              undone only by adding it again.
+            </>
+          ) : null
+        }
+        confirmLabel="Remove"
+        destructive
+        loading={removing}
+        onClose={() => !removing && setRemoveTarget(null)}
+        onConfirm={confirmRemovePantryItem}
+      />
 
       {modalMode && (
         <PantryItemFormModal
@@ -306,6 +388,7 @@ export default function PantryPage() {
           mode={modalMode}
           homes={homes}
           item={editingItem}
+          preferredHomeId={activeHomeId}
           onClose={closeModal}
           onSave={saveItem}
         />
@@ -323,18 +406,22 @@ function PantryItemFormModal({
   mode,
   homes,
   item,
+  preferredHomeId,
   onClose,
   onSave,
 }: {
   mode: "add" | "edit"
   homes: Home[]
   item: PantryItem | null
+  preferredHomeId?: string | null
   onClose: () => void
   onSave: (form: PantryItemInput, existingId?: string) => Promise<boolean>
 }) {
   const formId = "pantry-item-form"
   const defaultHomeId =
-    item?.home_id ?? (homes.length === 1 ? homes[0]?.id ?? "" : homes[0]?.id ?? "")
+    item?.home_id ??
+    preferredHomeId ??
+    (homes.length === 1 ? homes[0]?.id ?? "" : "")
 
   const [name, setName] = useState(item?.name ?? "")
   const [quantity, setQuantity] = useState(String(item?.quantity ?? 1))

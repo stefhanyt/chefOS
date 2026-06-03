@@ -21,10 +21,14 @@ import EmptyState from "@/components/EmptyState"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
 import ArchiveResidenceModal from "@/components/ArchiveResidenceModal"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import { useResidence } from "@/contexts/ResidenceContext"
 
 export default function HomesPage() {
   const router = useRouter()
   const { showSuccess, showError } = useToast()
+  const { merged, accessForHome } = useHomeAccess()
+  const { refreshHomes, setActiveHomeId } = useResidence()
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -101,7 +105,7 @@ export default function HomesPage() {
   }
 
   async function handleSaveHome(
-    form: { name: string; location: string; notes: string },
+    form: { name: string; location: string; team_notes: string },
     existingId?: string,
   ) {
     const supabase = createClient()
@@ -116,7 +120,8 @@ export default function HomesPage() {
         .update({
           name: form.name,
           location: form.location,
-          notes: form.notes,
+          team_notes: form.team_notes,
+          notes: form.team_notes,
           updated_at: new Date().toISOString(),
         })
         .eq("id", existingId)
@@ -175,6 +180,8 @@ export default function HomesPage() {
         member_count: 1,
       },
     ])
+    void refreshHomes()
+    setActiveHomeId(home.id)
     showSuccess(`${home.name} added`)
     closeModal()
   }
@@ -209,13 +216,15 @@ export default function HomesPage() {
         title="Residences"
         subtitle={loading ? "Loading…" : `${homes.length} home${homes.length !== 1 ? "s" : ""}`}
         action={
-          <button
-            onClick={() => setModalMode("add")}
-            className={ui.btnHeader}
-          >
-            <Plus size={15} />
-            Add Home
-          </button>
+          merged.canAddHome ? (
+            <button
+              onClick={() => setModalMode("add")}
+              className={ui.btnHeader}
+            >
+              <Plus size={15} />
+              Add Home
+            </button>
+          ) : undefined
         }
       />
 
@@ -244,10 +253,14 @@ export default function HomesPage() {
           <HomeCard
             key={home.id}
             home={home}
-            onEdit={(h) => {
-              setEditingHome(h)
-              setModalMode("edit")
-            }}
+            onEdit={
+              accessForHome(home.id)?.canEditHomeDetails
+                ? (h) => {
+                    setEditingHome(h)
+                    setModalMode("edit")
+                  }
+                : undefined
+            }
           />
         ))
       )}
@@ -259,7 +272,11 @@ export default function HomesPage() {
           onClose={closeModal}
           onSave={handleSaveHome}
           onRequestArchive={
-            modalMode === "edit" ? (home) => setArchiveTarget(home) : undefined
+            modalMode === "edit" &&
+            editingHome &&
+            accessForHome(editingHome.id)?.canArchiveResidence
+              ? (home) => setArchiveTarget(home)
+              : undefined
           }
         />
       )}
@@ -286,7 +303,7 @@ function HomeFormModal({
   home: Home | null
   onClose: () => void
   onSave: (
-    form: { name: string; location: string; notes: string },
+    form: { name: string; location: string; team_notes: string },
     existingId?: string,
   ) => void | Promise<void>
   onRequestArchive?: (home: Home) => void
@@ -294,7 +311,7 @@ function HomeFormModal({
   const formId = "home-form"
   const [name, setName] = useState(home?.name ?? "")
   const [location, setLocation] = useState(home?.location ?? "")
-  const [notes, setNotes] = useState(home?.notes ?? "")
+  const [teamNotes, setTeamNotes] = useState(home?.team_notes ?? home?.notes ?? "")
   const [saving, setSaving] = useState(false)
 
   const validation = useMemo(() => {
@@ -313,7 +330,11 @@ function HomeFormModal({
     setSaving(true)
     try {
       await onSave(
-        { name: name.trim(), location: location.trim(), notes: notes.trim() },
+        {
+          name: name.trim(),
+          location: location.trim(),
+          team_notes: teamNotes.trim(),
+        },
         home?.id,
       )
     } finally {
@@ -363,10 +384,10 @@ function HomeFormModal({
           required
         />
         <FormField
-          label="Notes (optional)"
-          value={notes}
-          onChange={setNotes}
-          placeholder="Kitchen details, preferences…"
+          label="Team notes (optional)"
+          value={teamNotes}
+          onChange={setTeamNotes}
+          placeholder="Shared with staff who have access"
         />
       </form>
     </SheetModal>

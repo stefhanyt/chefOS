@@ -18,8 +18,9 @@
 ### Run the schema
 
 4. In the Supabase dashboard, open **SQL Editor** → **New query**
-5. Paste the entire contents of `supabase-schema.sql` (in this repo root) and click **Run**
+5. Paste the entire contents of `supabase/migrations/20250101000000_base_schema.sql` and click **Run**
    - This creates all tables, enables RLS, adds policies, and sets up the `on_auth_user_created` trigger
+   - **Existing database?** Do not run the base file again — apply only the numbered upgrades listed in `supabase/README.md`
 
 ### Enable Realtime
 

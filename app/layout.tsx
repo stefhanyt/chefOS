@@ -3,6 +3,7 @@ import { Inter, Cormorant_Garamond } from "next/font/google"
 import "./globals.css"
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration"
 import { ToastProvider } from "@/components/ToastProvider"
+import AppProviders from "@/components/AppProviders"
 import { supabaseEnv } from "@/lib/env"
 
 void supabaseEnv
@@ -70,8 +71,10 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${display.variable}`}>
       <body className={`${inter.className} min-h-dvh bg-ivory text-charcoal antialiased`}>
         <ToastProvider>
-          <ServiceWorkerRegistration />
-          {children}
+          <AppProviders>
+            <ServiceWorkerRegistration />
+            {children}
+          </AppProviders>
         </ToastProvider>
       </body>
     </html>

@@ -186,7 +186,7 @@ export async function fetchShoppingItems(
       supabase
         .from("shopping_items")
         .select(
-          "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)",
+          "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email), assigned_to_profile:profiles!assigned_to(id, display_name, email)",
         )
         .is("archived_at", null)
         .in("status", ["Open", "Purchased"])

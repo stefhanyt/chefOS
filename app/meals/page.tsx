@@ -24,6 +24,15 @@ import EmptyState from "@/components/EmptyState"
 import NoHomesBanner from "@/components/NoHomesBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import { useResidence, filterByActiveHome } from "@/contexts/ResidenceContext"
+import CurrentResidenceBar from "@/components/CurrentResidenceBar"
+import ConfirmModal from "@/components/ConfirmModal"
+import {
+  activitySummary,
+  getActorDisplayName,
+  logResidenceActivity,
+} from "@/lib/activity-log"
 import SheetModal from "@/components/SheetModal"
 import FormField from "@/components/FormField"
 import SuggestingInput from "@/components/SuggestingInput"
@@ -40,7 +49,11 @@ const STATUS_FILTERS: (MealStatus | "All")[] = [
 
 export default function MealsPage() {
   const { showSuccess, showError } = useToast()
+  const { merged, accessForHome } = useHomeAccess()
+  const { activeHomeId } = useResidence()
   const [meals, setMeals] = useState<PreparedMeal[]>([])
+  const [removeTarget, setRemoveTarget] = useState<PreparedMeal | null>(null)
+  const [removing, setRemoving] = useState(false)
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -90,21 +103,26 @@ export default function MealsPage() {
     loadMeals()
   }, [retryCount, loadMeals])
 
+  const scopedMeals = useMemo(
+    () => filterByActiveHome(meals, activeHomeId),
+    [meals, activeHomeId],
+  )
+
   const filtered = useMemo(() => {
-    const next = meals.filter((m) => {
+    const next = scopedMeals.filter((m) => {
       const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
       const matchStatus = statusFilter === "All" || m.status === statusFilter
       return matchSearch && matchStatus
     })
-    logClientFilter("prepared_meals", meals.length, next.length, {
+    logClientFilter("prepared_meals", scopedMeals.length, next.length, {
       search,
       statusFilter,
     })
     return next
-  }, [meals, search, statusFilter])
+  }, [scopedMeals, search, statusFilter])
 
-  const expiring = meals.filter((m) => m.status === "Use Soon").length
-  const expired = meals.filter((m) => m.status === "Expired").length
+  const expiring = scopedMeals.filter((m) => m.status === "Use Soon").length
+  const expired = scopedMeals.filter((m) => m.status === "Expired").length
 
   type MealForm = {
     name: string
@@ -195,24 +213,38 @@ export default function MealsPage() {
     setEditingMeal(null)
   }
 
-  async function handleRemoveMeal(meal: PreparedMeal) {
-    if (!confirm(`Remove "${meal.name}" from prepared meals?`)) return
+  async function confirmRemoveMeal() {
+    if (!removeTarget) return
+    setRemoving(true)
     const supabase = createClient()
     if (!supabase) {
       showError(CONFIG_ERROR)
+      setRemoving(false)
       return
     }
     const { error } = await supabase
       .from("prepared_meals")
       .update({ archived_at: new Date().toISOString() })
-      .eq("id", meal.id)
+      .eq("id", removeTarget.id)
     if (error) {
       logSupabaseError("meals archive", error)
       showError(getSupabaseErrorMessage(error))
+      setRemoving(false)
       return
     }
-    setMeals((prev) => prev.filter((m) => m.id !== meal.id))
+    const userId = await getAuthUserId(supabase)
+    if (userId) {
+      const profile = await getActorDisplayName(supabase, userId)
+      await logResidenceActivity(
+        supabase,
+        removeTarget.home_id,
+        activitySummary(profile, `archived prepared meal ${removeTarget.name}`),
+      )
+    }
+    setMeals((prev) => prev.filter((m) => m.id !== removeTarget.id))
     showSuccess("Meal removed")
+    setRemoveTarget(null)
+    setRemoving(false)
   }
 
   return (
@@ -225,15 +257,17 @@ export default function MealsPage() {
             : `${expiring} use soon · ${expired} expired`
         }
         action={
-          <button
-            type="button"
-            onClick={() => setModalMode("add")}
-            disabled={!loading && homes.length === 0}
-            className={ui.btnHeader}
-          >
-            <Plus size={15} />
-            Log Meal
-          </button>
+          merged.canLogMeals ? (
+            <button
+              type="button"
+              onClick={() => setModalMode("add")}
+              disabled={!loading && homes.length === 0}
+              className={ui.btnHeader}
+            >
+              <Plus size={15} />
+              Log Meal
+            </button>
+          ) : undefined
         }
       />
 
@@ -242,6 +276,8 @@ export default function MealsPage() {
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
+
+      <CurrentResidenceBar />
 
       <SearchAndFilterBar
         value={search}
@@ -274,24 +310,50 @@ export default function MealsPage() {
           }
         />
       ) : (
-        filtered.map((meal) => (
-          <MealCard
-            key={meal.id}
-            meal={meal}
-            onEdit={(m) => {
-              setEditingMeal(m)
-              setModalMode("edit")
-            }}
-            onRemove={handleRemoveMeal}
-          />
-        ))
+        filtered.map((meal) => {
+          const canEdit = accessForHome(meal.home_id)?.canLogMeals ?? false
+          return (
+            <MealCard
+              key={meal.id}
+              meal={meal}
+              onEdit={
+                canEdit
+                  ? (m) => {
+                      setEditingMeal(m)
+                      setModalMode("edit")
+                    }
+                  : undefined
+              }
+              onRemove={canEdit ? setRemoveTarget : undefined}
+            />
+          )
+        })
       )}
+
+      <ConfirmModal
+        open={Boolean(removeTarget)}
+        title="Archive prepared meal?"
+        message={
+          removeTarget ? (
+            <>
+              Archive <strong>{removeTarget.name}</strong>? It will be removed from
+              the active meals list.
+            </>
+          ) : null
+        }
+        confirmLabel="Archive"
+        destructive
+        loading={removing}
+        onClose={() => !removing && setRemoveTarget(null)}
+        onConfirm={confirmRemoveMeal}
+      />
 
       {modalMode && (
         <LogMealForm
           mode={modalMode}
           meal={editingMeal}
           homes={homes}
+          preferredHomeId={activeHomeId}
           onSave={handleSaveMeal}
           onClose={() => {
             setModalMode(null)
@@ -312,12 +374,14 @@ function LogMealForm({
   mode,
   meal,
   homes,
+  preferredHomeId,
   onSave,
   onClose,
 }: {
   mode: "add" | "edit"
   meal: PreparedMeal | null
   homes: Home[]
+  preferredHomeId?: string | null
   onSave: (
     form: {
       name: string
@@ -343,7 +407,9 @@ function LogMealForm({
   const [showMore, setShowMore] = useState(
     Boolean(meal?.storage_location || meal?.reheating_instructions),
   )
-  const [homeId, setHomeId] = useState(meal?.home_id ?? "")
+  const [homeId, setHomeId] = useState(
+    meal?.home_id ?? preferredHomeId ?? (homes.length === 1 ? homes[0].id : ""),
+  )
   const [saving, setSaving] = useState(false)
   const [autofillHint, setAutofillHint] = useState<string | null>(null)
 

@@ -15,9 +15,15 @@ import { CONFIG_ERROR } from "@/lib/constants"
 import { ui } from "@/lib/ui"
 import EmptyState from "@/components/EmptyState"
 import type { Home, PantryItem, ShoppingItem, PreparedMeal } from "@/lib/types"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import CurrentResidenceBar from "@/components/CurrentResidenceBar"
+import OnboardingGuide from "@/components/OnboardingGuide"
+import { useResidence, filterByActiveHome } from "@/contexts/ResidenceContext"
 
 export default function DashboardPage() {
   const { showError } = useToast()
+  const { merged } = useHomeAccess()
+  const { activeHomeId } = useResidence()
   const [homes, setHomes] = useState<Home[]>([])
   const [alerts, setAlerts] = useState<PantryItem[]>([])
   const [openShopping, setOpenShopping] = useState<ShoppingItem[]>([])
@@ -114,22 +120,46 @@ export default function DashboardPage() {
         </p>
 
         <div className="mt-6 grid grid-cols-2 gap-2.5">
-          <QuickAction href="/pantry" icon={<Plus size={18} strokeWidth={1.5} />} label="Pantry" />
-          <QuickAction href="/meals" icon={<UtensilsCrossed size={18} strokeWidth={1.5} />} label="Log meal" />
-          <QuickAction href="/scan" icon={<ScanLine size={18} strokeWidth={1.5} />} label="Scan" />
-          <QuickAction href="/scan/batch" icon={<ShoppingCart size={18} strokeWidth={1.5} />} label="Batch" />
-          <QuickAction
-            href="/dish-library"
-            icon={<ChefHat size={18} strokeWidth={1.5} />}
-            label="Repertoire"
-            className="col-span-2"
-          />
+          {merged.canViewPantry && (
+            <QuickAction href="/pantry" icon={<Plus size={18} strokeWidth={1.5} />} label="Pantry" />
+          )}
+          {merged.canViewMeals && (
+            <QuickAction
+              href="/meals"
+              icon={<UtensilsCrossed size={18} strokeWidth={1.5} />}
+              label={merged.canLogMeals ? "Log meal" : "Meals"}
+            />
+          )}
+          {merged.canUseScan && (
+            <QuickAction href="/scan" icon={<ScanLine size={18} strokeWidth={1.5} />} label="Scan" />
+          )}
+          {merged.canUseScan && (
+            <QuickAction href="/scan/batch" icon={<ShoppingCart size={18} strokeWidth={1.5} />} label="Batch" />
+          )}
+          {merged.canViewMenu && (
+            <QuickAction
+              href="/menu"
+              icon={<UtensilsCrossed size={18} strokeWidth={1.5} />}
+              label="Menu"
+            />
+          )}
+          {merged.canManageDishRepertoire && (
+            <QuickAction
+              href="/dish-library"
+              icon={<ChefHat size={18} strokeWidth={1.5} />}
+              label="Repertoire"
+              className="col-span-2"
+            />
+          )}
         </div>
       </section>
 
       {error && (
         <ErrorBanner message={error} onRetry={() => setRetryCount((c) => c + 1)} />
       )}
+
+      <OnboardingGuide />
+      <CurrentResidenceBar />
 
       {loading ? (
         <div className="mt-8">
@@ -171,9 +201,9 @@ export default function DashboardPage() {
             )}
           </Section>
 
-          {alerts.length > 0 && (
+          {filterByActiveHome(alerts, activeHomeId).length > 0 && (
             <Section title="Pantry alerts" seeAllHref="/pantry">
-              {alerts.map((item) => (
+              {filterByActiveHome(alerts, activeHomeId).map((item) => (
                 <div key={item.id} className={`${ui.cardElevated} mb-3 p-4`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
@@ -201,7 +231,7 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <div className="px-4">
-                  {openShopping.slice(0, 4).map((item) => (
+                  {filterByActiveHome(openShopping, activeHomeId).slice(0, 4).map((item) => (
                     <div
                       key={item.id}
                       className="flex items-center justify-between border-b border-stone-100 py-3.5 last:border-0"
@@ -225,9 +255,9 @@ export default function DashboardPage() {
             </div>
           </Section>
 
-          {expiringSoon.length > 0 && (
+          {filterByActiveHome(expiringSoon, activeHomeId).length > 0 && (
             <Section title="Meals expiring" seeAllHref="/meals">
-              {expiringSoon.map((meal) => (
+              {filterByActiveHome(expiringSoon, activeHomeId).map((meal) => (
                 <div key={meal.id} className={`${ui.cardElevated} mb-3 p-4`}>
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -248,13 +278,15 @@ export default function DashboardPage() {
         </>
       )}
 
-      <Link
-        href="/scan"
-        className="pointer-events-auto fixed bottom-[var(--app-fab-offset)] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-navy text-ivory shadow-soft ring-2 ring-gold/30 transition active:scale-95 max-[28rem]:right-[max(1.25rem,env(safe-area-inset-right,0px))]"
-        aria-label="Scan item"
-      >
-        <ScanLine size={22} strokeWidth={1.5} />
-      </Link>
+      {merged.canUseScan && (
+        <Link
+          href="/scan"
+          className="pointer-events-auto fixed bottom-[var(--app-fab-offset)] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-navy text-ivory shadow-soft ring-2 ring-gold/30 transition active:scale-95 max-[28rem]:right-[max(1.25rem,env(safe-area-inset-right,0px))]"
+          aria-label="Scan item"
+        >
+          <ScanLine size={22} strokeWidth={1.5} />
+        </Link>
+      )}
     </AppShell>
   )
 }

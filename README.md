@@ -25,7 +25,7 @@ App runs on mock data immediately — no Supabase required.
 1. Create a project at supabase.com
 2. Copy `.env.local.example` → `.env.local`
 3. Fill in your Supabase URL and anon key
-4. Run `supabase-schema.sql` in your Supabase SQL editor
+4. Run `supabase/migrations/20250101000000_base_schema.sql` in the Supabase SQL editor (see `supabase/README.md`)
 5. Restart the dev server
 
 ## Pages

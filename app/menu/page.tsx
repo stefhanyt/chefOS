@@ -33,11 +33,16 @@ import { CONFIG_ERROR } from "@/lib/constants"
 import type { DishLibraryItem, Home, MenuItemRow } from "@/lib/types"
 import { ChevronLeft, ChevronRight, X, Check } from "lucide-react"
 import { ui } from "@/lib/ui"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import { useResidence } from "@/contexts/ResidenceContext"
+import CurrentResidenceBar from "@/components/CurrentResidenceBar"
 
 const PORTIONS = [1, 2, 3, 4, 5, 6, 8, 10, 12]
 
 export default function MenuPage() {
   const { showSuccess, showError } = useToast()
+  const { accessForHome } = useHomeAccess()
+  const { activeHomeId, setActiveHomeId } = useResidence()
   const [homes, setHomes] = useState<Home[]>([])
   const [homeId, setHomeId] = useState("")
   const [weekOffset, setWeekOffset] = useState(0)
@@ -56,6 +61,7 @@ export default function MenuPage() {
   const dates = getWeekDates(weekOffset)
   const weekStart = getWeekStart(weekOffset)
   const home = homes.find((h) => h.id === homeId)
+  const canEditMenu = accessForHome(homeId)?.canEditMenu ?? false
 
   const loadMenu = useCallback(async () => {
     if (!homeId) return
@@ -119,7 +125,11 @@ export default function MenuPage() {
         )
         if (dishesError) throw dishesError
         setDishLibrary(dishes)
-        if (list[0] && !homeId) setHomeId(list[0].id)
+        if (activeHomeId && list.some((h) => h.id === activeHomeId)) {
+          setHomeId(activeHomeId)
+        } else if (list[0] && !homeId) {
+          setHomeId(list[0].id)
+        }
       } catch (err) {
         logSupabaseError("menu init", err)
         setError("Failed to load menu data.")
@@ -129,7 +139,13 @@ export default function MenuPage() {
       }
     }
     init()
-  }, [retryCount])
+  }, [retryCount, activeHomeId])
+
+  useEffect(() => {
+    if (activeHomeId && homes.some((h) => h.id === activeHomeId)) {
+      setHomeId(activeHomeId)
+    }
+  }, [activeHomeId, homes])
 
   useEffect(() => {
     if (homeId) loadMenu()
@@ -440,6 +456,7 @@ export default function MenuPage() {
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-400">
                   {cat}
                 </h3>
+                {canEditMenu && (
                 <button
                   type="button"
                   onClick={() => openAddModal(selectedDay, cat)}
@@ -447,14 +464,21 @@ export default function MenuPage() {
                 >
                   + Add
                 </button>
+                )}
               </div>
               {dishes.length === 0 ? (
+                canEditMenu ? (
                 <button
                   onClick={() => openAddModal(selectedDay, cat)}
                   className="w-full rounded-2xl border border-dashed border-stone-200/60 bg-slate-50 px-4 py-3.5 text-left text-sm text-slate-400"
                 >
                   No {cat.toLowerCase()} — tap to add from repertoire
                 </button>
+                ) : (
+                <div className="w-full rounded-2xl border border-dashed border-stone-200/60 bg-slate-50 px-4 py-3.5 text-sm text-slate-400">
+                  No {cat.toLowerCase()} planned
+                </div>
+                )
               ) : (
                 dishes.map((entry) => (
                   <div
@@ -475,6 +499,8 @@ export default function MenuPage() {
                         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
                           Portions
                         </p>
+                        {canEditMenu ? (
+                        <>
                         <div className="mb-3 flex flex-wrap gap-1.5">
                           {PORTIONS.map((p) => (
                             <button
@@ -503,13 +529,22 @@ export default function MenuPage() {
                           placeholder="Notes — dietary restrictions, guests..."
                           className="w-full rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
                         />
+                        </>
+                        ) : (
+                          <p className="text-xs text-slate-500">
+                            {entry.portions} portions
+                            {entry.notes ? ` · ${entry.notes}` : ""}
+                          </p>
+                        )}
                       </div>
+                      {canEditMenu && (
                       <button
                         onClick={() => removeDish(entry.id, selectedDay, cat)}
                         className="flex h-11 min-h-[44px] w-11 min-w-[44px] flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-500"
                       >
                         <X size={13} />
                       </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -519,7 +554,7 @@ export default function MenuPage() {
         })}
 
         <AddMenuDishModal
-          open={addModalOpen}
+          open={addModalOpen && canEditMenu}
           onClose={() => setAddModalOpen(false)}
           menuCategory={selectedCat}
           dayLabel={`${MENU_DAYS[selectedDay]} · ${home.name}`}
@@ -604,6 +639,7 @@ export default function MenuPage() {
 
   return (
     <AppShell>
+      <CurrentResidenceBar showAllOption={false} />
       <div className={`chef-hero-bleed mb-7 rounded-b-3xl pb-6 ${ui.hero}`}>
         <p className="mb-1 text-xs font-bold uppercase tracking-widest opacity-60">
           Weekly Menu
@@ -616,7 +652,10 @@ export default function MenuPage() {
           {homes.map((h) => (
             <button
               key={h.id}
-              onClick={() => setHomeId(h.id)}
+              onClick={() => {
+                setHomeId(h.id)
+                setActiveHomeId(h.id)
+              }}
               className={`min-h-[44px] flex-shrink-0 rounded-full px-4 py-2.5 text-xs font-bold transition-all ${
                 homeId === h.id
                   ? "bg-surface text-navy"
@@ -742,7 +781,7 @@ export default function MenuPage() {
         </div>
       )}
 
-      {totalDishes > 0 && !isConfirmed && (
+      {totalDishes > 0 && !isConfirmed && canEditMenu && (
         <div className="mt-4">
           <button
             onClick={confirmMenu}

@@ -9,52 +9,16 @@ import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { useToast } from "@/components/ToastProvider"
-import { Users, Home, Bell, Shield, ChevronRight, ChefHat } from "lucide-react"
+import { Users, Home, Bell, ChevronRight, ChefHat, CalendarDays } from "lucide-react"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
 import type { Profile } from "@/lib/types"
 import ErrorBanner from "@/components/ErrorBanner"
 import { CONFIG_ERROR } from "@/lib/constants"
 import { ui } from "@/lib/ui"
 
-const settingsGroups = [
-  {
-    group: "Management",
-    items: [
-      {
-        label: "Team & Access",
-        sub: "Manage staff per residence",
-        icon: Users,
-        href: "/settings/team",
-      },
-      {
-        label: "Homes",
-        sub: "Add or edit residences",
-        icon: Home,
-        href: "/homes",
-      },
-      {
-        label: "Dish Repertoire",
-        sub: "Reusable dishes, menus & shopping",
-        icon: ChefHat,
-        href: "/dish-library",
-      },
-    ],
-  },
-  {
-    group: "App",
-    items: [
-      {
-        label: "Notifications",
-        sub: "Coming soon",
-        icon: Bell,
-        href: "/settings",
-        disabled: true,
-      },
-    ],
-  },
-]
-
 export default function SettingsPage() {
   const { showSuccess, showError } = useToast()
+  const { merged, loading: accessLoading } = useHomeAccess()
   const [profile, setProfile] = useState<Pick<Profile, "display_name" | "email" | "role"> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -134,6 +98,64 @@ export default function SettingsPage() {
 
   const initial = profile?.display_name?.charAt(0).toUpperCase() ?? "C"
 
+  const settingsGroups = [
+    {
+      group: "Management",
+      items: [
+        ...(merged.canManageTeam
+          ? [
+              {
+                label: "Team & Access",
+                sub: "Manage staff per residence",
+                icon: Users,
+                href: "/settings/team",
+              },
+            ]
+          : []),
+        {
+          label: "Homes",
+          sub: merged.canAddHome
+            ? "Add or edit residences"
+            : "View residences",
+          icon: Home,
+          href: "/homes",
+        },
+        ...(merged.canViewMenu
+          ? [
+              {
+                label: "Weekly Menu",
+                sub: merged.canEditMenu ? "Plan and edit menus" : "View menu",
+                icon: CalendarDays,
+                href: "/menu",
+              },
+            ]
+          : []),
+        ...(merged.canManageDishRepertoire
+          ? [
+              {
+                label: "Dish Repertoire",
+                sub: "Reusable dishes, menus & shopping",
+                icon: ChefHat,
+                href: "/dish-library",
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      group: "App",
+      items: [
+        {
+          label: "Notifications",
+          sub: "Coming soon",
+          icon: Bell,
+          href: "/settings",
+          disabled: true,
+        },
+      ],
+    },
+  ].filter((g) => g.items.length > 0)
+
   return (
     <AppShell>
       <PageHeader title="Settings" />
@@ -186,7 +208,8 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {settingsGroups.map((group) => (
+      {!accessLoading &&
+        settingsGroups.map((group) => (
         <div key={group.group} className="mb-5">
           <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
             {group.group}
@@ -235,7 +258,7 @@ export default function SettingsPage() {
             })}
           </div>
         </div>
-      ))}
+        ))}
 
       <SignOutButton />
     </AppShell>

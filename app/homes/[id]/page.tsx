@@ -31,6 +31,9 @@ import {
 import ErrorBanner from "@/components/ErrorBanner"
 import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
+import ActivityLogPanel from "@/components/ActivityLogPanel"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import { canViewPrivateNotes } from "@/lib/home-notes"
 
 export default function HomeDetailPage({
   params,
@@ -39,6 +42,9 @@ export default function HomeDetailPage({
 }) {
   const id = params?.id ?? ""
   const { showSuccess, showError } = useToast()
+  const { accessForHome } = useHomeAccess()
+  const access = accessForHome(id)
+  const showPrivate = canViewPrivateNotes(access)
 
   const [home, setHome] = useState<Home | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -115,7 +121,8 @@ export default function HomeDetailPage({
   async function handleSaveHome(form: {
     name: string
     location: string
-    notes: string
+    private_notes: string
+    team_notes: string
     kitchen_equipment: string
     preferences: string
   }) {
@@ -129,7 +136,9 @@ export default function HomeDetailPage({
       .update({
         name: form.name,
         location: form.location,
-        notes: form.notes,
+        private_notes: form.private_notes,
+        team_notes: form.team_notes,
+        notes: form.team_notes,
         kitchen_equipment: form.kitchen_equipment,
         preferences: form.preferences,
         updated_at: new Date().toISOString(),
@@ -176,9 +185,24 @@ export default function HomeDetailPage({
               <MapPin size={13} />
               {home.location}
             </div>
-            {home.notes && (
+            {(home.team_notes || home.notes) && (
               <p className="mt-3 text-sm leading-relaxed text-ivory/75">
-                {home.notes}
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-ivory/50">
+                  Team notes ·{" "}
+                </span>
+                {home.team_notes || home.notes}
+              </p>
+            )}
+            {showPrivate && (home.private_notes || home.kitchen_equipment || home.preferences) && (
+              <p className="mt-2 text-sm leading-relaxed text-ivory/60">
+                {home.private_notes && (
+                  <span className="block">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-ivory/45">
+                      Private ·{" "}
+                    </span>
+                    {home.private_notes}
+                  </span>
+                )}
               </p>
             )}
 
@@ -200,18 +224,30 @@ export default function HomeDetailPage({
             </div>
           </div>
 
-          {home.kitchen_equipment && (
+          {showPrivate && home.kitchen_equipment && (
             <InfoBlock
-              title="Kitchen Equipment"
+              title="Kitchen Equipment (private)"
               value={home.kitchen_equipment}
             />
           )}
-          {home.preferences && (
+          {showPrivate && home.preferences && (
             <InfoBlock
-              title="Client Preferences"
+              title="Client Preferences (private)"
               value={home.preferences}
             />
           )}
+
+          {(home.team_notes || home.notes) && (
+            <InfoBlock
+              title="Team Notes"
+              value={home.team_notes || home.notes || ""}
+            />
+          )}
+          {showPrivate && home.private_notes && (
+            <InfoBlock title="Private Notes" value={home.private_notes} />
+          )}
+
+          <ActivityLogPanel homeId={id} />
 
           {/* PANTRY ALERTS */}
           {alerts.length > 0 && (
@@ -340,7 +376,12 @@ export default function HomeDetailPage({
             )}
           </Section>
           {showEdit && home && (
-            <HomeEditModal home={home} onClose={() => setShowEdit(false)} onSave={handleSaveHome} />
+            <HomeEditModal
+              home={home}
+              showPrivate={showPrivate}
+              onClose={() => setShowEdit(false)}
+              onSave={handleSaveHome}
+            />
           )}
         </>
       )}
@@ -350,15 +391,18 @@ export default function HomeDetailPage({
 
 function HomeEditModal({
   home,
+  showPrivate,
   onClose,
   onSave,
 }: {
   home: Home
+  showPrivate: boolean
   onClose: () => void
   onSave: (form: {
     name: string
     location: string
-    notes: string
+    private_notes: string
+    team_notes: string
     kitchen_equipment: string
     preferences: string
   }) => void | Promise<void>
@@ -366,7 +410,8 @@ function HomeEditModal({
   const formId = "home-detail-form"
   const [name, setName] = useState(home.name)
   const [location, setLocation] = useState(home.location)
-  const [notes, setNotes] = useState(home.notes ?? "")
+  const [teamNotes, setTeamNotes] = useState(home.team_notes ?? home.notes ?? "")
+  const [privateNotes, setPrivateNotes] = useState(home.private_notes ?? "")
   const [kitchen, setKitchen] = useState(home.kitchen_equipment ?? "")
   const [preferences, setPreferences] = useState(home.preferences ?? "")
   const [saving, setSaving] = useState(false)
@@ -386,7 +431,8 @@ function HomeEditModal({
       await onSave({
         name: name.trim(),
         location: location.trim(),
-        notes: notes.trim(),
+        private_notes: privateNotes.trim(),
+        team_notes: teamNotes.trim(),
         kitchen_equipment: kitchen.trim(),
         preferences: preferences.trim(),
       })
@@ -413,9 +459,32 @@ function HomeEditModal({
       <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         <FormField label="Name" value={name} onChange={setName} required />
         <FormField label="Location" value={location} onChange={setLocation} required />
-        <FormField label="Notes" value={notes} onChange={setNotes} />
-        <FormField label="Kitchen Equipment" value={kitchen} onChange={setKitchen} />
-        <FormField label="Client Preferences" value={preferences} onChange={setPreferences} />
+        <FormField
+          label="Team Notes"
+          value={teamNotes}
+          onChange={setTeamNotes}
+          placeholder="Visible to all staff with access"
+        />
+        {showPrivate && (
+          <>
+            <FormField
+              label="Private Notes"
+              value={privateNotes}
+              onChange={setPrivateNotes}
+              placeholder="Owner, admin & manager only"
+            />
+            <FormField
+              label="Kitchen Equipment (private)"
+              value={kitchen}
+              onChange={setKitchen}
+            />
+            <FormField
+              label="Client Preferences (private)"
+              value={preferences}
+              onChange={setPreferences}
+            />
+          </>
+        )}
       </form>
     </SheetModal>
   )

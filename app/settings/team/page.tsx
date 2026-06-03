@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import AppShell from "@/components/AppShell"
 import MobileTopBar from "@/components/MobileTopBar"
@@ -12,29 +12,51 @@ import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { useToast } from "@/components/ToastProvider"
-import type { Home, HomeMember, MemberRole } from "@/lib/types"
+import type { Home, HomeMember, MemberRole, Profile } from "@/lib/types"
+import {
+  ALL_MEMBER_ROLES,
+  INVITE_MEMBER_ROLES,
+  ROLE_LABELS,
+  flagsForRole,
+  resolveResidenceAccess,
+} from "@/lib/home-access"
 import { Plus, Trash2 } from "lucide-react"
 import { ui } from "@/lib/ui"
 import SheetModal from "@/components/SheetModal"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
+import { CONFIG_ERROR } from "@/lib/constants"
+import ConfirmModal from "@/components/ConfirmModal"
+import { lookupProfileIdForTeamInvite } from "@/lib/supabase/team"
 
-const CONFIG_ERROR =
-  "Database not configured. Add Supabase credentials to .env.local and restart the dev server."
+const ACCOUNT_REQUIRED_MSG =
+  "This person needs to create a ChefOS account first."
 
 export default function TeamPage() {
   const { showSuccess, showError } = useToast()
+  const [userId, setUserId] = useState<string | null>(null)
   const [homes, setHomes] = useState<Home[]>([])
   const [members, setMembers] = useState<HomeMember[]>([])
+  const [ownerProfiles, setOwnerProfiles] = useState<Record<string, Profile>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteHomeId, setInviteHomeId] = useState("")
   const [inviteRole, setInviteRole] = useState<MemberRole>("staff")
-  const [canEditPantry, setCanEditPantry] = useState(true)
-  const [canAddShopping, setCanAddShopping] = useState(true)
-  const [canLogMeals, setCanLogMeals] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<HomeMember | null>(null)
+  const [removing, setRemoving] = useState(false)
+
+  const manageableHomes = useMemo(() => {
+    if (!userId) return []
+    return homes.filter((h) => {
+      const self = members.find(
+        (m) => m.home_id === h.id && m.user_id === userId,
+      )
+      return resolveResidenceAccess(userId, h, self ?? null).canManageTeam
+    })
+  }, [homes, members, userId])
 
   async function load() {
     setLoading(true)
@@ -46,6 +68,8 @@ export default function TeamPage() {
       return
     }
     try {
+      const uid = await getAuthUserId(supabase)
+      setUserId(uid)
       const [homesRes, membersRes] = await Promise.all([
         supabase.from("homes").select("*").is("archived_at", null).order("name"),
         supabase
@@ -55,9 +79,35 @@ export default function TeamPage() {
           .order("created_at"),
       ])
       if (homesRes.error) throw homesRes.error
-      setHomes((homesRes.data as Home[]) ?? [])
+      if (membersRes.error) throw membersRes.error
+      const homeList = (homesRes.data as Home[]) ?? []
+      setHomes(homeList)
       setMembers((membersRes.data as HomeMember[]) ?? [])
-      if (homesRes.data?.[0]) setInviteHomeId(homesRes.data[0].id)
+
+      const ownerIds = Array.from(new Set(homeList.map((h) => h.owner_id)))
+      if (ownerIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, display_name, email, role, created_at, updated_at")
+          .in("id", ownerIds)
+        const map: Record<string, Profile> = {}
+        for (const p of profiles ?? []) {
+          map[p.id] = p as Profile
+        }
+        setOwnerProfiles(map)
+      } else {
+        setOwnerProfiles({})
+      }
+
+      const memberList = (membersRes.data as HomeMember[]) ?? []
+      const firstManageable = homeList.find((h) => {
+        if (!uid) return false
+        const self = memberList.find(
+          (m) => m.home_id === h.id && m.user_id === uid,
+        )
+        return resolveResidenceAccess(uid, h, self ?? null).canManageTeam
+      })
+      if (firstManageable) setInviteHomeId(firstManageable.id)
     } catch (err) {
       logSupabaseError("team load", err)
       setError("Failed to load team data.")
@@ -78,42 +128,63 @@ export default function TeamPage() {
       showError(CONFIG_ERROR)
       return
     }
-    const userId = await getAuthUserId(supabase)
-    if (!userId) {
+    const uid = await getAuthUserId(supabase)
+    if (!uid) {
       showError("You must be signed in.")
       return
     }
 
+    const home = manageableHomes.find((h) => h.id === inviteHomeId)
+    if (!home) {
+      showError("You cannot add members to this residence.")
+      return
+    }
+
     setSaving(true)
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", inviteEmail.trim())
-      .maybeSingle()
-
-    if (profileError) {
-      logSupabaseError("team invite profile lookup", profileError)
-      showError(getSupabaseErrorMessage(profileError))
+    let profileId: string | null = null
+    try {
+      profileId = await lookupProfileIdForTeamInvite(
+        supabase,
+        inviteHomeId,
+        inviteEmail,
+      )
+    } catch (err) {
+      logSupabaseError("team invite profile lookup", err)
+      showError(getSupabaseErrorMessage(err))
       setSaving(false)
       return
     }
 
-    if (!profile) {
-      showError("No user found with that email. They must sign up first.")
+    if (!profileId) {
+      showError(ACCOUNT_REQUIRED_MSG)
       setSaving(false)
       return
     }
 
+    if (profileId === home.owner_id) {
+      showError("This person already owns this residence.")
+      setSaving(false)
+      return
+    }
+
+    const alreadyMember = members.some(
+      (m) => m.home_id === inviteHomeId && m.user_id === profileId,
+    )
+    if (alreadyMember) {
+      showError("This person is already on the team for this residence.")
+      setSaving(false)
+      return
+    }
+
+    const flags = flagsForRole(inviteRole)
     const { data, error } = await supabase
       .from("home_members")
       .insert({
         home_id: inviteHomeId,
-        user_id: profile.id,
+        user_id: profileId,
         role: inviteRole,
-        can_edit_pantry: canEditPantry,
-        can_add_shopping_items: canAddShopping,
-        can_log_meals: canLogMeals,
-        invited_by: userId,
+        ...flags,
+        invited_by: uid,
       })
       .select("*, profile:profiles(id, display_name, email)")
       .single()
@@ -132,20 +203,52 @@ export default function TeamPage() {
     showSuccess("Team member added")
   }
 
-  async function handleRemoveMember(memberId: string) {
+  async function handleRoleChange(memberId: string, role: MemberRole) {
     const supabase = createClient()
     if (!supabase) return
+    setUpdatingMemberId(memberId)
+    const flags = flagsForRole(role)
+    const { data, error } = await supabase
+      .from("home_members")
+      .update({ role, ...flags })
+      .eq("id", memberId)
+      .select("*, profile:profiles(id, display_name, email)")
+      .single()
+    setUpdatingMemberId(null)
+    if (error) {
+      logSupabaseError("team role update", error)
+      showError(getSupabaseErrorMessage(error))
+      return
+    }
+    if (data) {
+      setMembers((prev) =>
+        prev.map((m) => (m.id === memberId ? (data as HomeMember) : m)),
+      )
+      showSuccess("Role updated")
+    }
+  }
+
+  async function confirmRemoveMember() {
+    if (!removeTarget) return
+    setRemoving(true)
+    const supabase = createClient()
+    if (!supabase) {
+      setRemoving(false)
+      return
+    }
     const { error } = await supabase
       .from("home_members")
       .update({ removed_at: new Date().toISOString() })
-      .eq("id", memberId)
+      .eq("id", removeTarget.id)
+    setRemoving(false)
     if (error) {
       logSupabaseError("team member remove", error)
       showError(getSupabaseErrorMessage(error))
       return
     }
-    setMembers((prev) => prev.filter((m) => m.id !== memberId))
+    setMembers((prev) => prev.filter((m) => m.id !== removeTarget.id))
     showSuccess("Member removed")
+    setRemoveTarget(null)
   }
 
   return (
@@ -153,16 +256,21 @@ export default function TeamPage() {
       <MobileTopBar backHref="/settings" backLabel="Settings" title="Team & Access" />
 
       <PageHeader
-        subtitle={loading ? "Loading…" : "Manage staff per residence"}
+        subtitle={
+          loading
+            ? "Loading…"
+            : "Add staff by email — each person uses their own login"
+        }
         action={
-          <button
-            onClick={() => setShowInvite(true)}
-            disabled={homes.length === 0}
-            className={`${ui.btnHeader} disabled:opacity-50`}
-          >
-            <Plus size={15} />
-            Invite
-          </button>
+          manageableHomes.length > 0 ? (
+            <button
+              onClick={() => setShowInvite(true)}
+              className={ui.btnHeader}
+            >
+              <Plus size={15} />
+              Invite
+            </button>
+          ) : undefined
         }
       />
 
@@ -174,36 +282,43 @@ export default function TeamPage() {
             <div key={i} className="h-24 animate-pulse rounded-[22px] bg-slate-200" />
           ))}
         </div>
-      ) : homes.length === 0 ? (
+      ) : manageableHomes.length === 0 ? (
         <EmptyState
-          title="No residences yet"
-          message="Add a home before inviting team members."
+          title="No team access"
+          message="Only residence owners and admins can manage team members."
           action={
-            <Link href="/homes" className={ui.btnPrimary}>
-              Add residence
+            <Link href="/settings" className={ui.btnPrimary}>
+              Back to settings
             </Link>
           }
         />
       ) : (
-        homes.map((home) => {
+        manageableHomes.map((home) => {
           const homeMembers = members.filter((m) => m.home_id === home.id)
+          const owner = ownerProfiles[home.owner_id]
           return (
             <div key={home.id} className="mb-6">
               <h2 className="mb-2 text-xs font-extrabold uppercase tracking-widest text-slate-400">
                 {home.name} · {home.location}
               </h2>
 
-              {homeMembers.length === 0 ? (
-                <div className="rounded-[22px] border border-stone-200/60 bg-white p-4 text-sm text-slate-400">
-                  No staff assigned.
-                </div>
-              ) : (
-                <div className="overflow-hidden rounded-[22px] border border-stone-200/60 bg-white shadow-md shadow-slate-900/4">
-                  {homeMembers.map((member, i) => (
+              <div className="overflow-hidden rounded-[22px] border border-stone-200/60 bg-white shadow-md shadow-slate-900/4">
+                <MemberRow
+                  name={owner?.display_name ?? "Owner"}
+                  email={owner?.email ?? ""}
+                  roleLabel={ROLE_LABELS.owner}
+                  badgeType="blue"
+                />
+                {homeMembers.length === 0 ? (
+                  <div className="border-t border-slate-100 px-5 py-4 text-sm text-slate-400">
+                    No other staff yet.
+                  </div>
+                ) : (
+                  homeMembers.map((member, i) => (
                     <div
                       key={member.id}
-                      className={`flex items-center justify-between px-5 py-4 ${
-                        i < homeMembers.length - 1 ? "border-b border-slate-100" : ""
+                      className={`flex flex-col gap-3 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${
+                        i === homeMembers.length - 1 ? "" : ""
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -214,49 +329,71 @@ export default function TeamPage() {
                           <p className="text-sm font-bold text-slate-900">
                             {member.profile?.display_name}
                           </p>
-                          <p className="text-xs text-slate-400">{member.profile?.email}</p>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {member.can_edit_pantry && <PermChip label="Edit Pantry" />}
-                            {member.can_add_shopping_items && <PermChip label="Shopping" />}
-                            {member.can_log_meals && <PermChip label="Log Meals" />}
-                          </div>
+                          <p className="text-xs text-slate-400">
+                            {member.profile?.email}
+                          </p>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <StatusBadge
-                          label={member.role}
-                          type={
-                            member.role === "admin"
-                              ? "blue"
-                              : member.role === "staff"
-                                ? "ok"
-                                : "low"
+                      <div className="flex items-center gap-2 sm:flex-col sm:items-end">
+                        <select
+                          value={member.role}
+                          disabled={updatingMemberId === member.id}
+                          onChange={(e) =>
+                            handleRoleChange(
+                              member.id,
+                              e.target.value as MemberRole,
+                            )
                           }
-                        />
-                        {member.role !== "admin" && (
-                          <button
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="text-red-400"
-                            aria-label="Remove member"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                          className="min-h-[44px] rounded-xl border border-stone-200/60 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700"
+                          aria-label={`Role for ${member.profile?.display_name}`}
+                        >
+                          {ALL_MEMBER_ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABELS[r]}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setRemoveTarget(member)}
+                          className="flex h-9 w-9 items-center justify-center text-red-400"
+                          aria-label="Remove member"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  ))
+                )}
+              </div>
             </div>
           )
         })
       )}
 
+      <ConfirmModal
+        open={Boolean(removeTarget)}
+        title="Remove team member?"
+        message={
+          removeTarget ? (
+            <>
+              Remove <strong>{removeTarget.profile?.display_name}</strong> from this
+              residence? They will lose access on their next login.
+            </>
+          ) : null
+        }
+        confirmLabel="Remove"
+        destructive
+        loading={removing}
+        onClose={() => !removing && setRemoveTarget(null)}
+        onConfirm={confirmRemoveMember}
+      />
+
       {showInvite && (
         <SheetModal
           open
           onClose={() => setShowInvite(false)}
-          title="Invite Staff"
+          title="Add team member"
           footer={
             <ModalSubmitFooter
               formId="invite-staff-form"
@@ -270,111 +407,85 @@ export default function TeamPage() {
             />
           }
         >
-            <form id="invite-staff-form" onSubmit={handleInvite} className="space-y-4">
-              <Field
-                label="Email Address"
-                value={inviteEmail}
-                onChange={setInviteEmail}
-                placeholder="staff@email.com"
-                type="email"
-              />
+          <form id="invite-staff-form" onSubmit={handleInvite} className="space-y-4">
+            <p className="text-sm leading-relaxed text-slate-500">
+              They must create their own ChefOS account with this email first.
+              You are not sharing your login.
+            </p>
+            <Field
+              label="Staff email"
+              value={inviteEmail}
+              onChange={setInviteEmail}
+              placeholder="staff@email.com"
+              type="email"
+            />
 
-              <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Residence
-                </label>
-                <select
-                  value={inviteHomeId}
-                  onChange={(e) => setInviteHomeId(e.target.value)}
-                  className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                >
-                  {homes.map((h) => (
-                    <option key={h.id} value={h.id}>
-                      {h.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Residence
+              </label>
+              <select
+                value={inviteHomeId}
+                onChange={(e) => setInviteHomeId(e.target.value)}
+                className="w-full rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                {manageableHomes.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Role
-                </label>
-                <div className="flex gap-2">
-                  {(["staff", "viewer"] as MemberRole[]).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setInviteRole(r)}
-                      className={`flex-1 rounded-xl border py-2.5 text-xs font-bold capitalize transition-colors ${
-                        inviteRole === r
-                          ? "border-navy bg-navy text-ivory"
-                          : "border-stone-200/60 text-slate-600"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Permissions
-                </label>
-                <div className="space-y-2">
-                  <PermToggle
-                    label="Can edit pantry"
-                    checked={canEditPantry}
-                    onChange={setCanEditPantry}
-                  />
-                  <PermToggle
-                    label="Can add shopping items"
-                    checked={canAddShopping}
-                    onChange={setCanAddShopping}
-                  />
-                  <PermToggle
-                    label="Can log meals"
-                    checked={canLogMeals}
-                    onChange={setCanLogMeals}
-                  />
-                </div>
-              </div>
-
-            </form>
+            <div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Role
+              </label>
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as MemberRole)}
+                className="w-full min-h-[44px] rounded-2xl border border-stone-200/60 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
+                {INVITE_MEMBER_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </form>
         </SheetModal>
       )}
     </AppShell>
   )
 }
 
-function PermChip({ label }: { label: string }) {
-  return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
-      {label}
-    </span>
-  )
-}
-
-function PermToggle({
-  label,
-  checked,
-  onChange,
+function MemberRow({
+  name,
+  email,
+  roleLabel,
+  badgeType,
 }: {
-  label: string
-  checked: boolean
-  onChange: (v: boolean) => void
+  name: string
+  email: string
+  roleLabel: string
+  badgeType: "blue" | "ok" | "low"
 }) {
   return (
-    <label className="flex items-center justify-between rounded-xl border border-stone-200/60 px-4 py-3">
-      <span className="text-sm text-slate-700">{label}</span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-4 accent-blue-600"
-      />
-    </label>
+    <div className="flex items-center justify-between px-5 py-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-extrabold text-slate-600">
+          {name[0] ?? "?"}
+        </div>
+        <div>
+          <p className="text-sm font-bold text-slate-900">{name}</p>
+          {email ? (
+            <p className="text-xs text-slate-400">{email}</p>
+          ) : null}
+        </div>
+      </div>
+      <StatusBadge label={roleLabel} type={badgeType} />
+    </div>
   )
 }
 

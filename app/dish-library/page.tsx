@@ -41,11 +41,15 @@ import {
   REPERTOIRE_DIETARY_TAGS,
   REPERTOIRE_MEAL_CATEGORIES,
 } from "@/lib/repertoire-constants"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
+import Link from "next/link"
 
 type DishAction = "menu" | "residence" | "shopping" | null
 
 export default function DishRepertoirePage() {
   const { showSuccess, showError } = useToast()
+  const { merged } = useHomeAccess()
+  const canManage = merged.canManageDishRepertoire
   const [dishes, setDishes] = useState<DishLibraryItem[]>([])
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,7 +88,7 @@ export default function DishRepertoirePage() {
       } catch (err) {
         logSupabaseError("dish repertoire load", err)
         setError(
-          "Failed to load dish repertoire. Run supabase-dish-repertoire.sql if this is a new setup.",
+          "Failed to load dish repertoire. Run supabase/migrations/20250101000005_dish_repertoire.sql (see supabase/README.md).",
         )
         showError(getSupabaseErrorMessage(err))
       } finally {
@@ -203,6 +207,23 @@ export default function DishRepertoirePage() {
 
   const activeCount = dishes.filter((d) => d.is_active !== false).length
 
+  if (!loading && !canManage) {
+    return (
+      <AppShell>
+        <PageHeader title="Dish Repertoire" />
+        <EmptyState
+          title="No access"
+          message="Only managers and owners can manage the dish repertoire."
+          action={
+            <Link href="/settings" className={ui.btnPrimary}>
+              Back to settings
+            </Link>
+          }
+        />
+      </AppShell>
+    )
+  }
+
   return (
     <AppShell>
       <PageHeader
@@ -213,23 +234,25 @@ export default function DishRepertoirePage() {
             : `${activeCount} reusable dish${activeCount !== 1 ? "es" : ""} · menus & shopping`
         }
         action={
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => setQuickModal(true)}
-              className={ui.btnSecondary}
-            >
-              Quick
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className={ui.btnHeader}
-            >
-              <Plus size={15} />
-              New Dish
-            </button>
-          </div>
+          canManage ? (
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setQuickModal(true)}
+                className={ui.btnSecondary}
+              >
+                Quick
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className={ui.btnHeader}
+              >
+                <Plus size={15} />
+                New Dish
+              </button>
+            </div>
+          ) : undefined
         }
       />
 

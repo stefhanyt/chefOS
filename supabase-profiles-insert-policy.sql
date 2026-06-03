@@ -1,1 +1,2 @@
--- Use supabase-profiles-rls-fix.sql (full profile + homes owner policies).
+-- DEPRECATED → supabase/migrations/20250101000001_profiles_rls.sql
+-- See supabase/README.md
