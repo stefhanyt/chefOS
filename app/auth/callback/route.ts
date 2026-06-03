@@ -1,5 +1,7 @@
+import { ensureUserProfile } from "@/lib/supabase/auth-helpers"
 import { getSafeRedirectPath } from "@/lib/safe-redirect"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { logSupabaseError } from "@/lib/supabase/errors"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
@@ -21,24 +23,9 @@ export async function GET(request: Request) {
         } = await supabase.auth.getUser()
 
         if (user) {
-          const displayName =
-            (user.user_metadata?.full_name as string | undefined) ??
-            user.email?.split("@")[0] ??
-            "Chef"
-
-          try {
-            await supabase.from("profiles").upsert(
-              {
-                id: user.id,
-                email: user.email,
-                display_name: displayName,
-                role: "user",
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "id", ignoreDuplicates: true },
-            )
-          } catch {
-            // Profile already exists or RLS blocked the write — safe to ignore
+          const { error: profileError } = await ensureUserProfile(supabase, user)
+          if (profileError) {
+            logSupabaseError("auth callback ensureUserProfile", profileError)
           }
         }
 

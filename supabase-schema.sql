@@ -190,13 +190,15 @@ alter table weekly_menus    enable row level security;
 alter table menu_items      enable row level security;
 alter table barcode_scans   enable row level security;
 
--- Profiles
+-- Profiles (id = auth.users.id; not user_id)
 create policy "Users can view own profile" on profiles
-  for select using (auth.uid() = id);
+  for select to authenticated using (auth.uid() = id);
 create policy "Users can insert own profile" on profiles
-  for insert with check (auth.uid() = id);
+  for insert to authenticated with check (auth.uid() = id);
 create policy "Users can update own profile" on profiles
-  for update using (auth.uid() = id);
+  for update to authenticated
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
 
 -- Helper: is the requesting user a member of a given home?
 create or replace function is_home_member(p_home_id uuid)
@@ -216,9 +218,13 @@ $$ language sql security definer stable;
 create policy "Home owners and members can view" on homes
   for select using (is_home_member(id));
 create policy "Owners can insert homes" on homes
-  for insert with check (auth.uid() = owner_id);
+  for insert to authenticated with check (auth.uid() = owner_id);
 create policy "Owners can update homes" on homes
-  for update using (auth.uid() = owner_id);
+  for update to authenticated
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+create policy "Owners can delete homes" on homes
+  for delete to authenticated using (auth.uid() = owner_id);
 
 -- Home members
 create policy "View home members" on home_members
