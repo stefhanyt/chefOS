@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Profile } from "@/lib/types"
+import { HOME_MEMBER_PROFILE_EMBED } from "@/lib/supabase/team"
 
 export type ResidenceTeamMember = {
   user_id: string
@@ -21,7 +22,7 @@ export async function fetchResidenceTeam(
       .maybeSingle(),
     supabase
       .from("home_members")
-      .select("user_id, profile:profiles(id, display_name, email)")
+      .select(`user_id, ${HOME_MEMBER_PROFILE_EMBED}`)
       .eq("home_id", homeId)
       .is("removed_at", null),
   ])

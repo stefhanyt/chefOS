@@ -52,7 +52,7 @@ export interface HomeMember {
   invited_by: string
   created_at: string
   removed_at?: string | null
-  // joined
+  /** Member's profile (via home_members.user_id → profiles, not invited_by). */
   profile?: Profile
   home?: Home
 }

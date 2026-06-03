@@ -34,6 +34,7 @@ import { ui } from "@/lib/ui"
 import ActivityLogPanel from "@/components/ActivityLogPanel"
 import { useHomeAccess } from "@/hooks/useHomeAccess"
 import { canViewPrivateNotes } from "@/lib/home-notes"
+import { HOME_MEMBER_WITH_PROFILE_SELECT } from "@/lib/supabase/team"
 
 export default function HomeDetailPage({
   params,
@@ -91,7 +92,7 @@ export default function HomeDetailPage({
               .order("expiry_date"),
             supabase
               .from("home_members")
-              .select("*, profile:profiles(id, display_name, email)")
+              .select(HOME_MEMBER_WITH_PROFILE_SELECT)
               .eq("home_id", id)
               .is("removed_at", null),
           ])

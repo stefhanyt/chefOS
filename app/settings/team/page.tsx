@@ -26,7 +26,10 @@ import SheetModal from "@/components/SheetModal"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
 import { CONFIG_ERROR } from "@/lib/constants"
 import ConfirmModal from "@/components/ConfirmModal"
-import { lookupProfileIdForTeamInvite } from "@/lib/supabase/team"
+import {
+  HOME_MEMBER_WITH_PROFILE_SELECT,
+  lookupProfileIdForTeamInvite,
+} from "@/lib/supabase/team"
 
 const ACCOUNT_REQUIRED_MSG =
   "This person needs to create a ChefOS account first."
@@ -74,7 +77,7 @@ export default function TeamPage() {
         supabase.from("homes").select("*").is("archived_at", null).order("name"),
         supabase
           .from("home_members")
-          .select("*, profile:profiles(id, display_name, email)")
+          .select(HOME_MEMBER_WITH_PROFILE_SELECT)
           .is("removed_at", null)
           .order("created_at"),
       ])
@@ -186,7 +189,7 @@ export default function TeamPage() {
         ...flags,
         invited_by: uid,
       })
-      .select("*, profile:profiles(id, display_name, email)")
+      .select(HOME_MEMBER_WITH_PROFILE_SELECT)
       .single()
 
     setSaving(false)
@@ -212,7 +215,7 @@ export default function TeamPage() {
       .from("home_members")
       .update({ role, ...flags })
       .eq("id", memberId)
-      .select("*, profile:profiles(id, display_name, email)")
+      .select(HOME_MEMBER_WITH_PROFILE_SELECT)
       .single()
     setUpdatingMemberId(null)
     if (error) {
