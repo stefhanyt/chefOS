@@ -145,19 +145,20 @@ export default function HomesPage() {
       return
     }
 
-    const { home, error: createError, needsLogin } = await createHomeWithOwner(
-      supabase,
-      form,
-    )
-
-    if (needsLogin) {
-      showError("You must be signed in to add a residence.")
-      router.push(`/login?next=${encodeURIComponent(getSafeRedirectPath("/homes"))}`)
-      return
-    }
-
-    if (createError || !home) {
-      showError(getSupabaseErrorMessage(createError))
+    // Add Residence modal → HomeFormModal.onSave → createHomeWithOwner (sets owner_id)
+    let home: Home
+    try {
+      home = await createHomeWithOwner(supabase, form)
+    } catch (err) {
+      if (err instanceof Error && err.message === "User not authenticated") {
+        showError("You must be signed in to add a residence.")
+        router.push(
+          `/login?next=${encodeURIComponent(getSafeRedirectPath("/homes"))}`,
+        )
+        return
+      }
+      logSupabaseError("homes create", err)
+      showError(getSupabaseErrorMessage(err))
       return
     }
 

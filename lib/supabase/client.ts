@@ -1,24 +1,22 @@
 import { createBrowserClient } from "@supabase/ssr"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { supabaseEnv, isSupabaseConfigured } from "@/lib/env"
 import { isBrowser } from "@/lib/safe-client"
-import { getSupabaseAuthStorage } from "@/lib/supabase/safe-storage"
 
 export { isSupabaseConfigured }
 
-// Returns null if env vars are not set — callers must show a configuration error
+let browserClient: SupabaseClient | null = null
+
+// Cookie-backed session (syncs with middleware). Do not override with localStorage.
 export function createClient() {
   if (!supabaseEnv.configured) return null
   if (!isBrowser()) return null
 
   try {
-    return createBrowserClient(supabaseEnv.url, supabaseEnv.key, {
-      auth: {
-        storage: getSupabaseAuthStorage(),
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    })
+    if (!browserClient) {
+      browserClient = createBrowserClient(supabaseEnv.url, supabaseEnv.key)
+    }
+    return browserClient
   } catch (err) {
     console.error("[ChefOS] Failed to create Supabase client:", err)
     return null

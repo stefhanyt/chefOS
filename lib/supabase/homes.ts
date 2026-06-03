@@ -1,8 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Home } from "@/lib/types"
-import { ensureUserProfile, getAuthUser } from "@/lib/supabase/auth-helpers"
-import { logSupabaseError } from "@/lib/supabase/errors"
+import { ensureUserProfile } from "@/lib/supabase/auth-helpers"
+import {
+  logHomeInsertDiagnostic,
+  logSupabaseError,
+} from "@/lib/supabase/errors"
 
+/**
+ * Used by Add Residence: app/homes/page.tsx → HomeFormModal → handleSaveHome → here.
+ */
 export async function createHomeWithOwner(
   supabase: SupabaseClient,
   input: {
@@ -12,46 +18,68 @@ export async function createHomeWithOwner(
     kitchen_equipment?: string
     preferences?: string
   },
-): Promise<{
-  home: Home | null
-  error: unknown
-  needsLogin?: boolean
-}> {
-  const { user, error: authError } = await getAuthUser(supabase)
-  if (authError) {
-    logSupabaseError("createHome auth", authError)
-    return { home: null, error: authError, needsLogin: true }
-  }
-  if (!user) {
-    return {
-      home: null,
-      error: new Error("Not signed in"),
-      needsLogin: true,
+): Promise<Home> {
+  const {
+    data: { session: initialSession },
+  } = await supabase.auth.getSession()
+
+  if (!initialSession?.access_token) {
+    const { error: refreshError } = await supabase.auth.refreshSession()
+    if (refreshError) {
+      logSupabaseError("createHome refreshSession", refreshError)
     }
   }
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser()
+
+  if (authError) {
+    logSupabaseError("createHome auth", authError)
+    throw authError
+  }
+  if (!user) throw new Error("User not authenticated")
 
   const { error: profileError } = await ensureUserProfile(supabase, user)
   if (profileError) {
     logSupabaseError("createHome profile", profileError)
-    return { home: null, error: profileError }
+    throw profileError
   }
 
-  const { data: home, error: homeError } = await supabase
+  const insertPayload = {
+    name: input.name.trim(),
+    location: input.location.trim(),
+    notes: input.notes?.trim() || null,
+    owner_id: user.id,
+    kitchen_equipment: input.kitchen_equipment?.trim() || null,
+    preferences: input.preferences?.trim() || null,
+  }
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  logHomeInsertDiagnostic("createHome insert payload", insertPayload, {
+    authUserId: user.id,
+    sessionUserId: session?.user?.id ?? null,
+    hasAccessToken: Boolean(session?.access_token),
+  })
+
+  const { data: home, error } = await supabase
     .from("homes")
-    .insert({
-      owner_id: user.id,
-      name: input.name.trim(),
-      location: input.location.trim(),
-      notes: input.notes?.trim() || null,
-      kitchen_equipment: input.kitchen_equipment?.trim() || null,
-      preferences: input.preferences?.trim() || null,
-    })
-    .select("*")
+    .insert(insertPayload)
+    .select()
     .single()
 
-  if (homeError) {
-    logSupabaseError("createHome", homeError)
-    return { home: null, error: homeError }
+  if (error) {
+    logSupabaseError("createHome insert failed", {
+      code: (error as { code?: string }).code,
+      message: error.message,
+      owner_idPresent: Boolean(insertPayload.owner_id),
+      authUserId: user.id,
+    })
+    throw error
   }
 
   const { error: memberError } = await supabase.from("home_members").insert({
@@ -66,8 +94,8 @@ export async function createHomeWithOwner(
 
   if (memberError) {
     logSupabaseError("createHomeMember", memberError)
-    return { home: null, error: memberError }
+    throw memberError
   }
 
-  return { home: home as Home, error: null }
+  return home as Home
 }
