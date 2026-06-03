@@ -28,7 +28,7 @@ export default function HomesPage() {
   const router = useRouter()
   const { showSuccess, showError } = useToast()
   const { merged, accessForHome } = useHomeAccess()
-  const { refreshHomes, setActiveHomeId } = useResidence()
+  const { refreshHomes, setActiveHomeId, activeHomeId } = useResidence()
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -205,6 +205,8 @@ export default function HomesPage() {
       return
     }
     setHomes((prev) => prev.filter((h) => h.id !== archiveTarget.id))
+    if (activeHomeId === archiveTarget.id) setActiveHomeId(null)
+    void refreshHomes()
     showSuccess("Residence archived")
     setArchiveTarget(null)
     closeModal()
@@ -214,7 +216,11 @@ export default function HomesPage() {
     <AppShell>
       <PageHeader
         title="Residences"
-        subtitle={loading ? "Loading…" : `${homes.length} home${homes.length !== 1 ? "s" : ""}`}
+        subtitle={
+          loading
+            ? "Loading…"
+            : `${homes.length} active residence${homes.length !== 1 ? "s" : ""}`
+        }
         action={
           merged.canAddHome ? (
             <button
@@ -222,7 +228,7 @@ export default function HomesPage() {
               className={ui.btnHeader}
             >
               <Plus size={15} />
-              Add Home
+              Add Residence
             </button>
           ) : undefined
         }
@@ -236,8 +242,8 @@ export default function HomesPage() {
         <SkeletonList count={2} className="h-36" />
       ) : homes.length === 0 ? (
         <EmptyState
-          title="No residences yet"
-          message="Add your first home to begin pantry, meals, and shopping."
+          title="Your residences live here"
+          message="Each residence has its own pantry, shopping list, weekly menu, and team. Add one to begin."
           action={
             <button
               type="button"

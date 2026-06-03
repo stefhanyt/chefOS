@@ -456,11 +456,14 @@ export default function ShoppingListPage() {
         <SkeletonList count={3} className="h-16" />
       ) : homes.length === 0 ? null : open.length === 0 && purchased.length === 0 ? (
         <EmptyState
-          title="Shopping list is empty"
-          message="Add items you need to buy for your residences."
+          title="Nothing on the list yet"
+          message="Add ingredients and supplies for your current residence. Mark items purchased when you shop."
         />
       ) : open.length === 0 ? (
-        <EmptyState message="All caught up — nothing left to buy." />
+        <EmptyState
+          title="All caught up"
+          message="Every open item is purchased. Add more when you plan your next shop."
+        />
       ) : (
         Object.entries(grouped).map(([homeName, groupItems]) => (
           <div key={homeName} className="mb-5">
@@ -555,13 +558,13 @@ export default function ShoppingListPage() {
 
       <ConfirmModal
         open={Boolean(removeTarget)}
-        title="Remove shopping item?"
+        title="Remove from shopping list?"
         message={
           removeTarget ? (
             <>Remove <strong>{removeTarget.name}</strong> from the list?</>
           ) : null
         }
-        confirmLabel="Remove"
+        confirmLabel="Remove Item"
         destructive
         loading={removing}
         onClose={() => !removing && setRemoveTarget(null)}

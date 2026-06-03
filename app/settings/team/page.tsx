@@ -259,7 +259,7 @@ export default function TeamPage() {
         subtitle={
           loading
             ? "Loading…"
-            : "Add staff by email — each person uses their own login"
+            : "Invite by email — each person signs in with their own account"
         }
         action={
           manageableHomes.length > 0 ? (
@@ -298,7 +298,7 @@ export default function TeamPage() {
           const owner = ownerProfiles[home.owner_id]
           return (
             <div key={home.id} className="mb-6">
-              <h2 className="mb-2 text-xs font-extrabold uppercase tracking-widest text-slate-400">
+              <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-500">
                 {home.name} · {home.location}
               </h2>
 
@@ -356,8 +356,8 @@ export default function TeamPage() {
                         <button
                           type="button"
                           onClick={() => setRemoveTarget(member)}
-                          className="flex h-9 w-9 items-center justify-center text-red-400"
-                          aria-label="Remove member"
+                          className={`${ui.btnIcon} text-rose-500`}
+                          aria-label={`Remove ${member.profile?.display_name ?? "member"}`}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -382,7 +382,7 @@ export default function TeamPage() {
             </>
           ) : null
         }
-        confirmLabel="Remove"
+        confirmLabel="Remove Member"
         destructive
         loading={removing}
         onClose={() => !removing && setRemoveTarget(null)}

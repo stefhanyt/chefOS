@@ -158,7 +158,10 @@ export default function SettingsPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Settings" />
+      <PageHeader
+        title="Settings"
+        subtitle="Profile, residences, and household access"
+      />
 
       {error && (
         <ErrorBanner

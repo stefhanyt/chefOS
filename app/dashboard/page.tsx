@@ -170,8 +170,8 @@ export default function DashboardPage() {
           <Section title="Residences" seeAllHref="/homes">
             {homes.length === 0 ? (
               <EmptyState
-                title="No residences yet"
-                message="Add your first home to start tracking pantry, meals, and shopping."
+                title="Set up your first residence"
+                message="ChefOS organizes pantry, meals, and shopping per home. Add a residence to open your command center."
                 action={
                   <Link href="/homes" className={ui.btnPrimary}>
                     Add residence

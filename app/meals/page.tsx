@@ -303,10 +303,13 @@ export default function MealsPage() {
         <SkeletonList count={3} className="h-24" />
       ) : filtered.length === 0 ? (
         <EmptyState
+          title={
+            search || statusFilter !== "All" ? undefined : "No prepared meals yet"
+          }
           message={
             search || statusFilter !== "All"
-              ? "No meals match your filter."
-              : "No prepared meals yet. Log your first dish when it leaves the kitchen."
+              ? "No meals match your search or status filter."
+              : "Log what leaves the kitchen so expiry and portions stay visible to the household."
           }
         />
       ) : (

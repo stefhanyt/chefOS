@@ -33,7 +33,7 @@ export default function PantryItemCard({
             <button
               type="button"
               onClick={() => onEdit(item)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-charcoal"
+              className="mobile-header-button flex items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 hover:text-charcoal"
               aria-label="Edit item"
             >
               <Pencil size={15} strokeWidth={1.5} />
@@ -43,7 +43,7 @@ export default function PantryItemCard({
             <button
               type="button"
               onClick={() => onRemove(item)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-700"
+              className="mobile-header-button flex items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-700"
               aria-label="Remove item"
             >
               <Trash2 size={15} strokeWidth={1.5} />

@@ -272,8 +272,8 @@ export default function ScanPage() {
       <AppShell>
         <MobileTopBar backHref="/dashboard" title="Scan item" />
         <EmptyState
-          title="No scan access"
-          message="Only managers and owners can scan items into the pantry."
+          title="Scanning not available"
+          message="Barcode scan is for managers and owners. Staff can still update pantry quantities from the Pantry screen."
           action={
             <Link href="/dashboard" className={ui.btnPrimary}>
               Back to home

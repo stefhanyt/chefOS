@@ -22,7 +22,7 @@ export default function ArchiveResidenceModal({
     <SheetModal
       open
       onClose={onClose}
-      title="Archive this residence?"
+      title="Archive residence?"
       footer={
         <div className="flex gap-3">
           <button
@@ -45,10 +45,9 @@ export default function ArchiveResidenceModal({
       }
     >
       <p className="text-sm leading-relaxed text-stone-600">
-        This will remove{" "}
-        <span className="font-semibold text-charcoal">{residenceName}</span> from
-        your active list, but its pantry, meals, shopping items, and history will be
-        kept.
+        <span className="font-semibold text-charcoal">{residenceName}</span> will
+        leave your active list. Pantry, meals, shopping, and history stay in the
+        database — you can restore access later if needed.
       </p>
     </SheetModal>
   )

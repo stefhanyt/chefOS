@@ -16,7 +16,9 @@ export default function PageHeader({ title, subtitle, action }: Props) {
           </h1>
         )}
         {subtitle && (
-          <p className={`text-sm text-stone-500 ${title ? "mt-1" : ""}`}>
+          <p
+            className={`text-sm leading-relaxed text-stone-500 ${title ? "mt-1.5" : ""}`}
+          >
             {subtitle}
           </p>
         )}

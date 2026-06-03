@@ -296,8 +296,8 @@ export default function BatchScanPage() {
       <AppShell>
         <MobileTopBar backHref="/dashboard" title="Batch Scan" />
         <EmptyState
-          title="No scan access"
-          message="Only managers and owners can scan items into the pantry."
+          title="Batch scan not available"
+          message="Batch barcode scan is for managers and owners. Ask your residence admin if you need access."
           action={
             <Link href="/dashboard" className={ui.btnPrimary}>
               Back to home

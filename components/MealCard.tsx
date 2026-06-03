@@ -39,7 +39,7 @@ export default function MealCard({ meal, onEdit, onRemove }: Props) {
             <button
               type="button"
               onClick={() => onEdit(meal)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100"
+              className="mobile-header-button flex items-center justify-center rounded-full text-stone-400 hover:bg-stone-100"
               aria-label="Edit meal"
             >
               <Pencil size={15} strokeWidth={1.5} />
@@ -49,7 +49,7 @@ export default function MealCard({ meal, onEdit, onRemove }: Props) {
             <button
               type="button"
               onClick={() => onRemove(meal)}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-700"
+              className="mobile-header-button flex items-center justify-center rounded-full text-stone-400 hover:bg-rose-50 hover:text-rose-700"
               aria-label="Remove meal"
             >
               <Trash2 size={15} strokeWidth={1.5} />

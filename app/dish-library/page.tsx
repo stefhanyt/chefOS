@@ -43,6 +43,7 @@ import {
 } from "@/lib/repertoire-constants"
 import { useHomeAccess } from "@/hooks/useHomeAccess"
 import Link from "next/link"
+import ConfirmModal from "@/components/ConfirmModal"
 
 type DishAction = "menu" | "residence" | "shopping" | null
 
@@ -64,6 +65,11 @@ export default function DishRepertoirePage() {
   const [editingDish, setEditingDish] = useState<DishLibraryItem | null>(null)
   const [actionDish, setActionDish] = useState<DishLibraryItem | null>(null)
   const [action, setAction] = useState<DishAction>(null)
+  const [archiveTarget, setArchiveTarget] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [archiving, setArchiving] = useState(false)
 
   const loadData = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -176,24 +182,27 @@ export default function DishRepertoirePage() {
     showSuccess(dishId ? "Dish updated" : "Dish saved to repertoire")
   }
 
-  async function handleArchiveDish(id: string, name: string) {
-    if (!confirm(`Remove "${name}" from your repertoire?`)) return
+  async function confirmArchiveDish() {
+    if (!archiveTarget) return
     const supabase = createClient()
     if (!supabase) {
       showError(CONFIG_ERROR)
       return
     }
+    setArchiving(true)
     const { error } = await supabase
       .from("dish_library")
       .update({ archived_at: new Date().toISOString() })
-      .eq("id", id)
+      .eq("id", archiveTarget.id)
+    setArchiving(false)
     if (error) {
       logSupabaseError("dish archive", error)
       showError(getSupabaseErrorMessage(error))
       return
     }
-    setDishes((prev) => prev.filter((d) => d.id !== id))
+    setDishes((prev) => prev.filter((d) => d.id !== archiveTarget.id))
     showSuccess("Dish removed from repertoire")
+    setArchiveTarget(null)
   }
 
   function openAction(dish: DishLibraryItem, kind: DishAction) {
@@ -212,8 +221,8 @@ export default function DishRepertoirePage() {
       <AppShell>
         <PageHeader title="Dish Repertoire" />
         <EmptyState
-          title="No access"
-          message="Only managers and owners can manage the dish repertoire."
+          title="Repertoire is read-only"
+          message="Managers and owners can add and edit dishes. Your role can view menus and meals elsewhere in the app."
           action={
             <Link href="/settings" className={ui.btnPrimary}>
               Back to settings
@@ -406,7 +415,7 @@ export default function DishRepertoirePage() {
                   className={`${ui.btnSecondary} w-full gap-1.5 text-xs sm:flex-1`}
                 >
                   <Calendar size={14} />
-                  Add to Menu
+                  Add to Weekly Menu
                 </button>
                 <button
                   type="button"
@@ -414,7 +423,7 @@ export default function DishRepertoirePage() {
                   className={`${ui.btnSecondary} w-full gap-1.5 text-xs sm:flex-1`}
                 >
                   <HomeIcon size={14} />
-                  Add to Residence
+                  Log Prepared Meal
                 </button>
                 <button
                   type="button"
@@ -422,7 +431,7 @@ export default function DishRepertoirePage() {
                   className={`${ui.btnPrimary} w-full gap-1.5 text-xs sm:flex-1`}
                 >
                   <ShoppingCart size={14} />
-                  Shopping List
+                  Add to Shopping List
                 </button>
               </div>
 
@@ -436,9 +445,11 @@ export default function DishRepertoirePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleArchiveDish(dish.id, dish.name)}
+                  onClick={() =>
+                    setArchiveTarget({ id: dish.id, name: dish.name })
+                  }
                   className={`${ui.btnIcon} border border-red-100 text-red-500`}
-                  aria-label={`Remove ${dish.name}`}
+                  aria-label={`Remove ${dish.name} from repertoire`}
                 >
                   <Trash2 size={18} />
                 </button>
@@ -512,6 +523,24 @@ export default function DishRepertoirePage() {
           onError={showError}
         />
       )}
+
+      <ConfirmModal
+        open={Boolean(archiveTarget)}
+        title="Remove from repertoire?"
+        message={
+          archiveTarget ? (
+            <>
+              Remove <strong>{archiveTarget.name}</strong> from your dish
+              repertoire? It will no longer appear in menus or quick-add lists.
+            </>
+          ) : null
+        }
+        confirmLabel="Remove from Repertoire"
+        destructive
+        loading={archiving}
+        onClose={() => !archiving && setArchiveTarget(null)}
+        onConfirm={confirmArchiveDish}
+      />
     </AppShell>
   )
 }

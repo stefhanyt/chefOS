@@ -25,7 +25,7 @@ export default function HomeCard({ home, onEdit }: Props) {
         <button
           type="button"
           onClick={() => onEdit(home)}
-          className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-stone-200/60 bg-surface/95 text-stone-500 shadow-card backdrop-blur-sm"
+          className="absolute right-4 top-4 z-10 mobile-header-button flex items-center justify-center rounded-full border border-stone-200/60 bg-surface/95 text-stone-500 shadow-card backdrop-blur-sm"
           aria-label="Edit residence"
         >
           <Pencil size={14} strokeWidth={1.5} />

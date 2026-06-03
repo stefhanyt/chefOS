@@ -4,11 +4,13 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Package, Users, ChefHat, X } from "lucide-react"
 import { useResidence } from "@/contexts/ResidenceContext"
+import { useHomeAccess } from "@/hooks/useHomeAccess"
 import { ONBOARDING_DISMISS_KEY } from "@/lib/residence-storage"
 import { ui } from "@/lib/ui"
 
 export default function OnboardingGuide() {
   const { homes, loading } = useResidence()
+  const { merged } = useHomeAccess()
   const [dismissed, setDismissed] = useState(true)
 
   useEffect(() => {
@@ -44,7 +46,7 @@ export default function OnboardingGuide() {
           localStorage.setItem(ONBOARDING_DISMISS_KEY, "1")
           setDismissed(true)
         }}
-        className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full text-stone-400 hover:bg-stone-100"
+        className="mobile-header-button absolute right-3 top-3 flex items-center justify-center rounded-full text-stone-400 hover:bg-stone-100"
         aria-label="Dismiss"
       >
         <X size={16} />
@@ -59,11 +61,13 @@ export default function OnboardingGuide() {
           icon={<Package size={16} />}
           label="Add pantry items"
         />
-        <OnboardingStep
-          href="/settings/team"
-          icon={<Users size={16} />}
-          label="Invite your team"
-        />
+        {merged.canManageTeam && (
+          <OnboardingStep
+            href="/settings/team"
+            icon={<Users size={16} />}
+            label="Invite your team"
+          />
+        )}
         <OnboardingStep
           href="/dish-library"
           icon={<ChefHat size={16} />}

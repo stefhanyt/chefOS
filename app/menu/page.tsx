@@ -408,8 +408,8 @@ export default function MenuPage() {
         )}
         {!error && homes.length === 0 && (
           <EmptyState
-            title="No residence yet"
-            message="Add a home before planning weekly menus."
+            title="Add a residence first"
+            message="Weekly menus are planned per home. Create or join a residence to start."
             action={
               <Link href="/homes" className={ui.btnPrimary}>
                 Add residence
@@ -640,6 +640,12 @@ export default function MenuPage() {
   return (
     <AppShell>
       <CurrentResidenceBar showAllOption={false} />
+      {!canEditMenu && (
+        <p className="mb-4 rounded-2xl border border-stone-200/60 bg-stone-50/80 px-4 py-3 text-sm leading-relaxed text-stone-600">
+          View-only for this residence — you can review the week but cannot add or
+          change dishes.
+        </p>
+      )}
       <div className={`chef-hero-bleed mb-7 rounded-b-3xl pb-6 ${ui.hero}`}>
         <p className="mb-1 text-xs font-bold uppercase tracking-widest opacity-60">
           Weekly Menu

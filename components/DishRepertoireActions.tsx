@@ -230,7 +230,7 @@ export function DishAddToMenuModal({
     <SheetModal
       open
       onClose={onClose}
-      title="Add to Menu"
+      title="Add to Weekly Menu"
       footer={
         <ModalSubmitFooter
           formId={formId}
@@ -579,7 +579,7 @@ export function DishAddToShoppingModal({
       footer={
         <ModalSubmitFooter
           formId={formId}
-          label="Add Ingredients"
+          label="Add to Shopping List"
           saving={saving}
           disabled={!canSubmit}
           missing={

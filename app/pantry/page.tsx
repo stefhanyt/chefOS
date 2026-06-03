@@ -336,10 +336,13 @@ export default function PantryPage() {
         <SkeletonList count={3} />
       ) : filtered.length === 0 ? (
         <EmptyState
+          title={
+            search || statusFilter !== "All" ? undefined : "Pantry is ready"
+          }
           message={
             search || statusFilter !== "All"
-              ? "No items match your search."
-              : "Pantry is empty. Add your first item to begin tracking stock."
+              ? "No items match your search or filter."
+              : "Stock your shelves here — scan barcodes or add items manually to track levels and alerts."
           }
         />
       ) : (

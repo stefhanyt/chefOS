@@ -75,7 +75,7 @@ export default function SheetModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-stone-50/80 text-stone-500 transition hover:bg-stone-100"
+            className="mobile-header-button flex items-center justify-center rounded-full border border-stone-200/80 bg-stone-50/80 text-stone-500 transition hover:bg-stone-100"
             aria-label="Close"
           >
             <X size={18} strokeWidth={1.5} />
