@@ -17,8 +17,14 @@ import {
   updatePantryItem,
   type PantryItemInput,
 } from "@/lib/supabase/pantry"
-import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import {
+  attachHomes,
+  fetchPantryItems,
+  logClientFilter,
+  mergeById,
+} from "@/lib/supabase/list-fetch"
 import { computePantryStatus } from "@/lib/pantry-utils"
+import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home, PantryItem, PantryStatus } from "@/lib/types"
@@ -35,8 +41,6 @@ const STATUS_FILTERS: (PantryStatus | "All")[] = [
   "Low",
   "OK",
 ]
-
-const PANTRY_SELECT = "*, home:homes(id, name, location)"
 
 export default function PantryPage() {
   const { showSuccess, showError } = useToast()
@@ -62,18 +66,18 @@ export default function PantryPage() {
       return
     }
     try {
-      const [itemsRes, homesRes] = await Promise.all([
-        supabase
-          .from("pantry_items")
-          .select(PANTRY_SELECT)
-          .is("archived_at", null)
-          .order("status")
-          .order("name"),
-        supabase.from("homes").select("id, name").is("archived_at", null).order("name"),
-      ])
-      if (itemsRes.error) throw itemsRes.error
-      setItems((itemsRes.data as PantryItem[]) ?? [])
-      setHomes((homesRes.data as Home[]) ?? [])
+      const homesRes = await supabase
+        .from("homes")
+        .select("id, name, location, owner_id")
+        .is("archived_at", null)
+        .order("name")
+      if (homesRes.error) throw homesRes.error
+      const homeList = (homesRes.data as Home[]) ?? []
+      setHomes(homeList)
+
+      const { data, error: itemsError } = await fetchPantryItems(supabase, homeList)
+      if (itemsError) throw itemsError
+      setItems(data)
     } catch (err) {
       logSupabaseError("pantry load", err)
       setError("Failed to load pantry.")
@@ -88,13 +92,20 @@ export default function PantryPage() {
     load()
   }, [retryCount, load])
 
-  const filtered = items.filter((item) => {
-    const matchSearch =
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      (item.category ?? "").toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === "All" || item.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  const filtered = useMemo(() => {
+    const next = items.filter((item) => {
+      const matchSearch =
+        item.name.toLowerCase().includes(search.toLowerCase()) ||
+        (item.category ?? "").toLowerCase().includes(search.toLowerCase())
+      const matchStatus = statusFilter === "All" || item.status === statusFilter
+      return matchSearch && matchStatus
+    })
+    logClientFilter("pantry_items", items.length, next.length, {
+      search,
+      statusFilter,
+    })
+    return next
+  }, [items, search, statusFilter])
 
   async function handleQuantityChange(id: string, delta: number) {
     const item = items.find((i) => i.id === id)
@@ -145,10 +156,12 @@ export default function PantryPage() {
         return false
       }
       if (data) {
+        const row = attachHomes([data], homes)[0]
         setItems((prev) =>
-          prev.map((i) => (i.id === existingId ? data : i)),
+          prev.map((i) => (i.id === existingId ? row : i)),
         )
       }
+      await load({ silent: true })
       showSuccess("Pantry item updated")
       return true
     }
@@ -169,10 +182,17 @@ export default function PantryPage() {
       return false
     }
 
-    setItems((prev) => {
-      if (prev.some((i) => i.id === data.id)) return prev
-      return [data, ...prev]
-    })
+    const row = attachHomes(
+      [
+        {
+          ...data,
+          status: computePantryStatus(data.quantity, data.minimum_quantity),
+        },
+      ],
+      homes,
+    )[0]
+    setItems((prev) => mergeById(prev, row))
+    await load({ silent: true })
     showSuccess("Pantry item added")
     return true
   }

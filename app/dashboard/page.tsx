@@ -236,7 +236,7 @@ export default function DashboardPage() {
 
       <Link
         href="/scan"
-        className="fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-navy text-ivory shadow-soft ring-2 ring-gold/30 transition active:scale-95"
+        className="pointer-events-auto fixed bottom-[var(--app-fab-offset)] right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-navy text-ivory shadow-soft ring-2 ring-gold/30 transition active:scale-95 max-[28rem]:right-[max(1.25rem,env(safe-area-inset-right,0px))]"
         aria-label="Scan item"
       >
         <ScanLine size={22} strokeWidth={1.5} />

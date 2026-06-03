@@ -6,6 +6,7 @@ import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import { createClient } from "@/lib/supabase/client"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import { fetchBarcodeScans } from "@/lib/supabase/list-fetch"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
 import type { BarcodeScan, Home } from "@/lib/types"
@@ -33,13 +34,17 @@ export default function ScanHistoryPage() {
         return
       }
       try {
-        const { data, error: dbError } = await supabase
-          .from("barcode_scans")
-          .select("*, home:homes(id, name)")
-          .order("created_at", { ascending: false })
-          .limit(100)
+        const homesRes = await supabase
+          .from("homes")
+          .select("id, name, location, owner_id")
+          .is("archived_at", null)
+        const homeList = (homesRes.data as Home[]) ?? []
+        const { data, error: dbError } = await fetchBarcodeScans(
+          supabase,
+          homeList,
+        )
         if (dbError) throw dbError
-        setScans((data as (BarcodeScan & { home?: Home })[]) ?? [])
+        setScans(data)
       } catch (err) {
         logSupabaseError("scan history load", err)
         setError("Failed to load scan history.")

@@ -68,7 +68,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${display.variable}`}>
-      <body className={`${inter.className} min-h-screen bg-ivory text-charcoal antialiased`}>
+      <body className={`${inter.className} min-h-dvh bg-ivory text-charcoal antialiased`}>
         <ToastProvider>
           <ServiceWorkerRegistration />
           {children}

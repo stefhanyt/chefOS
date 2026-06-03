@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import AppShell from "@/components/AppShell"
 import HomeCard from "@/components/HomeCard"
 import PageHeader from "@/components/PageHeader"
@@ -8,8 +9,8 @@ import SheetModal from "@/components/SheetModal"
 import FormField from "@/components/FormField"
 import ModalSubmitFooter from "@/components/ModalSubmitFooter"
 import { createClient } from "@/lib/supabase/client"
-import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { createHomeWithOwner } from "@/lib/supabase/homes"
+import { getSafeRedirectPath } from "@/lib/safe-redirect"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
@@ -21,6 +22,7 @@ import { SkeletonList } from "@/components/Skeleton"
 import { ui } from "@/lib/ui"
 
 export default function HomesPage() {
+  const router = useRouter()
   const { showSuccess, showError } = useToast()
   const [homes, setHomes] = useState<Home[]>([])
   const [loading, setLoading] = useState(true)
@@ -143,17 +145,16 @@ export default function HomesPage() {
       return
     }
 
-    const userId = await getAuthUserId(supabase)
-    if (!userId) {
-      showError("You must be signed in to add a residence.")
-      return
-    }
-
-    const { home, error: createError } = await createHomeWithOwner(
+    const { home, error: createError, needsLogin } = await createHomeWithOwner(
       supabase,
-      userId,
       form,
     )
+
+    if (needsLogin) {
+      showError("You must be signed in to add a residence.")
+      router.push(`/login?next=${encodeURIComponent(getSafeRedirectPath("/homes"))}`)
+      return
+    }
 
     if (createError || !home) {
       showError(getSupabaseErrorMessage(createError))

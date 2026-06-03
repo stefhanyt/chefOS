@@ -1,12 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import SearchAndFilterBar from "@/components/SearchAndFilterBar"
 import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
+import {
+  fetchDishLibrary,
+  logClientFilter,
+  mergeById,
+} from "@/lib/supabase/list-fetch"
 import { useToast } from "@/components/ToastProvider"
 import type { DishLibraryItem } from "@/lib/types"
 import { Plus, Clock, BookOpen, Trash2 } from "lucide-react"
@@ -29,10 +34,12 @@ export default function DishLibraryPage() {
   const [showModal, setShowModal] = useState(false)
   const [editingDish, setEditingDish] = useState<DishLibraryItem | null>(null)
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      setError(null)
+  const loadDishes = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) {
+        setLoading(true)
+        setError(null)
+      }
       const supabase = createClient()
       if (!supabase) {
         setError(CONFIG_ERROR)
@@ -40,32 +47,36 @@ export default function DishLibraryPage() {
         return
       }
       try {
-        const { data, error: dbError } = await supabase
-          .from("dish_library")
-          .select("*")
-          .is("archived_at", null)
-          .order("name")
+        const { data, error: dbError } = await fetchDishLibrary(supabase)
         if (dbError) throw dbError
-        setDishes((data as DishLibraryItem[]) ?? [])
+        setDishes(data)
       } catch (err) {
         logSupabaseError("dish library load", err)
         setError("Failed to load dish library. Check your connection and try again.")
         showError(getSupabaseErrorMessage(err))
       } finally {
-        setLoading(false)
+        if (!opts?.silent) setLoading(false)
       }
-    }
-    load()
-  }, [retryCount])
-
-  const filtered = dishes.filter(
-    (d) =>
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.category.toLowerCase().includes(search.toLowerCase()) ||
-      (Array.isArray(d.tags) ? d.tags : []).some((t) =>
-        String(t).toLowerCase().includes(search.toLowerCase()),
-      ),
+    },
+    [showError],
   )
+
+  useEffect(() => {
+    loadDishes()
+  }, [retryCount, loadDishes])
+
+  const filtered = useMemo(() => {
+    const next = dishes.filter(
+      (d) =>
+        d.name.toLowerCase().includes(search.toLowerCase()) ||
+        (d.category ?? "").toLowerCase().includes(search.toLowerCase()) ||
+        (Array.isArray(d.tags) ? d.tags : []).some((t) =>
+          String(t).toLowerCase().includes(search.toLowerCase()),
+        ),
+    )
+    logClientFilter("dish_library", dishes.length, next.length, { search })
+    return next
+  }, [dishes, search])
 
   async function handleAddDish(form: DishFormInput) {
     const supabase = createClient()
@@ -88,7 +99,8 @@ export default function DishLibraryPage() {
       showError(getSupabaseErrorMessage(error))
       return
     }
-    if (data) setDishes((prev) => [data as DishLibraryItem, ...prev])
+    if (data) setDishes((prev) => mergeById(prev, data as DishLibraryItem))
+    await loadDishes({ silent: true })
     setShowModal(false)
     showSuccess("Dish added to library")
   }
@@ -112,6 +124,7 @@ export default function DishLibraryPage() {
         prev.map((d) => (d.id === id ? (data as DishLibraryItem) : d)),
       )
     }
+    await loadDishes({ silent: true })
     setEditingDish(null)
     showSuccess("Dish updated")
   }

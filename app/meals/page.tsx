@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import MealCard from "@/components/MealCard"
@@ -9,6 +9,13 @@ import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { computeMealStatus } from "@/lib/pantry-utils"
+import {
+  attachHomes,
+  fetchPreparedMeals,
+  fetchRowById,
+  logClientFilter,
+  mergeById,
+} from "@/lib/supabase/list-fetch"
 import { useToast } from "@/components/ToastProvider"
 import type { Home, PreparedMeal, MealStatus } from "@/lib/types"
 import { Plus } from "lucide-react"
@@ -42,48 +49,58 @@ export default function MealsPage() {
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null)
   const [editingMeal, setEditingMeal] = useState<PreparedMeal | null>(null)
 
-  useEffect(() => {
-    async function load() {
+  const loadMeals = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
       setLoading(true)
       setError(null)
-      const supabase = createClient()
-      if (!supabase) {
-        setError(CONFIG_ERROR)
-        setLoading(false)
-        return
-      }
-      try {
-        const [mealsRes, homesRes] = await Promise.all([
-          supabase
-            .from("prepared_meals")
-            .select("*, home:homes(id, name, location)")
-            .is("archived_at", null)
-            .order("expiry_date"),
-          supabase
-            .from("homes")
-            .select("id, name")
-            .is("archived_at", null)
-            .order("name"),
-        ])
-        if (mealsRes.error) throw mealsRes.error
-        setMeals((mealsRes.data as PreparedMeal[]) ?? [])
-        setHomes((homesRes.data as Home[]) ?? [])
-      } catch (err) {
-        logSupabaseError("meals load", err)
-        setError("Failed to load meals. Check your connection and try again.")
-        showError(getSupabaseErrorMessage(err))
-      } finally {
-        setLoading(false)
-      }
     }
-    load()
-  }, [retryCount])
+    const supabase = createClient()
+    if (!supabase) {
+      setError(CONFIG_ERROR)
+      if (!opts?.silent) setLoading(false)
+      return
+    }
+    try {
+      const homesRes = await supabase
+        .from("homes")
+        .select("id, name, location, owner_id")
+        .is("archived_at", null)
+        .order("name")
+      if (homesRes.error) throw homesRes.error
+      const homeList = (homesRes.data as Home[]) ?? []
+      setHomes(homeList)
 
-  const filtered = meals.filter((m) => {
-    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = statusFilter === "All" || m.status === statusFilter
-    return matchSearch && matchStatus
-  })
+      const { data, error: mealsError } = await fetchPreparedMeals(
+        supabase,
+        homeList,
+      )
+      if (mealsError) throw mealsError
+      setMeals(data)
+    } catch (err) {
+      logSupabaseError("meals load", err)
+      setError("Failed to load meals. Check your connection and try again.")
+      showError(getSupabaseErrorMessage(err))
+    } finally {
+      if (!opts?.silent) setLoading(false)
+    }
+  }, [showError])
+
+  useEffect(() => {
+    loadMeals()
+  }, [retryCount, loadMeals])
+
+  const filtered = useMemo(() => {
+    const next = meals.filter((m) => {
+      const matchSearch = m.name.toLowerCase().includes(search.toLowerCase())
+      const matchStatus = statusFilter === "All" || m.status === statusFilter
+      return matchSearch && matchStatus
+    })
+    logClientFilter("prepared_meals", meals.length, next.length, {
+      search,
+      statusFilter,
+    })
+    return next
+  }, [meals, search, statusFilter])
 
   const expiring = meals.filter((m) => m.status === "Use Soon").length
   const expired = meals.filter((m) => m.status === "Expired").length
@@ -107,22 +124,31 @@ export default function MealsPage() {
     }
 
     if (existingId) {
-      const { data, error } = await supabase
+      const { error: updateError } = await supabase
         .from("prepared_meals")
         .update({ ...form, status, updated_at: new Date().toISOString() })
         .eq("id", existingId)
-        .select("*, home:homes(id, name, location)")
-        .single()
-      if (error) {
-        logSupabaseError("meals update", error)
-        showError(getSupabaseErrorMessage(error))
+      if (updateError) {
+        logSupabaseError("meals update", updateError)
+        showError(getSupabaseErrorMessage(updateError))
         return
       }
-      if (data) {
+      const row = await fetchRowById<PreparedMeal>(
+        supabase,
+        "prepared_meals",
+        existingId,
+      )
+      if (row) {
+        const normalized = {
+          ...row,
+          status: computeMealStatus(row.expiry_date),
+        }
+        const attached = attachHomes([normalized], homes)[0]
         setMeals((prev) =>
-          prev.map((m) => (m.id === existingId ? (data as PreparedMeal) : m)),
+          prev.map((m) => (m.id === existingId ? attached : m)),
         )
       }
+      await loadMeals({ silent: true })
       showSuccess("Meal updated")
     } else {
       const userId = await getAuthUserId(supabase)
@@ -130,17 +156,38 @@ export default function MealsPage() {
         showError("You must be signed in to log meals.")
         return
       }
-      const { data, error } = await supabase
+      const { data: inserted, error } = await supabase
         .from("prepared_meals")
         .insert({ ...form, status, created_by: userId, notes: "" })
-        .select("*, home:homes(id, name, location)")
+        .select("*")
         .single()
       if (error) {
         logSupabaseError("meals insert", error)
         showError(getSupabaseErrorMessage(error))
         return
       }
-      if (data) setMeals((prev) => [data as PreparedMeal, ...prev])
+      let row = inserted as PreparedMeal | null
+      if (!row) {
+        const { data: fallback } = await supabase
+          .from("prepared_meals")
+          .select("*")
+          .eq("home_id", form.home_id)
+          .eq("name", form.name.trim())
+          .is("archived_at", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        row = (fallback as PreparedMeal) ?? null
+      }
+      if (row) {
+        const normalized = {
+          ...row,
+          status: computeMealStatus(row.expiry_date),
+        }
+        const attached = attachHomes([normalized], homes)[0]
+        setMeals((prev) => mergeById(prev, attached))
+      }
+      await loadMeals({ silent: true })
       showSuccess("Meal logged")
     }
     setModalMode(null)

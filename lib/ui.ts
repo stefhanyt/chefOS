@@ -5,7 +5,7 @@
 
 export const ui = {
   /** App shell & page background */
-  pageBg: "bg-ivory min-h-screen",
+  pageBg: "bg-ivory min-h-dvh",
 
   /** Elevated surface card */
   card:

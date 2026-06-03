@@ -9,17 +9,32 @@
     --color-navy: #0f2438;
     --color-gold: #b8956b;
     --color-border: #e8e4dc;
+    /* Bottom nav + scroll reserve (see AppShell) */
+    --app-nav-bar-height: 4.25rem;
+    --app-nav-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --app-nav-offset: calc(var(--app-nav-bar-height) + var(--app-nav-safe-bottom));
+    --app-fab-offset: calc(var(--app-nav-offset) + 0.75rem);
   }
 
   html {
     -webkit-tap-highlight-color: transparent;
     overflow-x: hidden;
+    height: 100%;
   }
 
   body {
     font-family: var(--font-inter), Inter, system-ui, sans-serif;
     overflow-x: hidden;
+    min-height: 100dvh;
+    min-height: 100vh;
     @apply bg-ivory text-charcoal antialiased;
+  }
+
+  /* Compact nav in short landscape viewports */
+  @media (orientation: landscape) and (max-height: 32rem) {
+    :root {
+      --app-nav-bar-height: 3.5rem;
+    }
   }
 
   a,
@@ -61,5 +76,91 @@
 
   .chef-empty {
     @apply rounded-2xl border border-dashed border-stone-200/80 bg-surface/60 px-8 py-10 text-center;
+  }
+
+  /* ── App shell: one scroll region, fixed nav always on top ── */
+  .app-shell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    isolation: isolate;
+    background-color: var(--color-bg);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  @supports not (height: 100dvh) {
+    .app-shell {
+      height: 100vh;
+      max-height: 100vh;
+    }
+  }
+
+  .app-shell-main {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-shell-content {
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    max-width: 28rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+    padding-top: 1.5rem;
+    padding-bottom: var(--app-nav-offset);
+  }
+
+  .app-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    pointer-events: auto;
+    touch-action: manipulation;
+    padding-bottom: var(--app-nav-safe-bottom);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Full-bleed hero inside shell without covering the nav */
+  .chef-hero-bleed {
+    margin-left: -1.25rem;
+    margin-right: -1.25rem;
+    margin-top: -1.5rem;
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+    padding-top: 1.5rem;
+  }
+
+  @media (orientation: landscape) and (max-height: 32rem) {
+    .app-shell-content {
+      padding-top: 0.75rem;
+    }
+
+    .chef-hero-bleed {
+      margin-top: -0.75rem;
+      padding-top: 0.75rem;
+    }
+
+    .app-bottom-nav-inner {
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+    }
+
+    .app-bottom-nav-inner a {
+      min-height: 2.75rem;
+      font-size: 9px;
+    }
   }
 }

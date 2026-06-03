@@ -13,7 +13,7 @@ export type PantryItemInput = {
   home_id: string
 }
 
-const PANTRY_SELECT = "*, home:homes(id, name, location)"
+const PANTRY_ROW_SELECT = "*"
 
 export function buildPantryInsertPayload(
   input: PantryItemInput,
@@ -71,7 +71,7 @@ export async function insertPantryItem(
   const { data, error } = await supabase
     .from("pantry_items")
     .insert(row)
-    .select(PANTRY_SELECT)
+    .select(PANTRY_ROW_SELECT)
     .single()
 
   if (!error && data) {
@@ -82,10 +82,9 @@ export async function insertPantryItem(
     logSupabaseError("pantry insert (with select)", error)
   }
 
-  // Insert may succeed even if returning row fails (RLS on select) — verify
   const { data: fallback, error: fallbackError } = await supabase
     .from("pantry_items")
-    .select(PANTRY_SELECT)
+    .select(PANTRY_ROW_SELECT)
     .eq("home_id", input.home_id)
     .eq("name", row.name as string)
     .is("archived_at", null)
@@ -109,7 +108,7 @@ export async function updatePantryItem(
     .from("pantry_items")
     .update(buildPantryUpdatePayload(input))
     .eq("id", id)
-    .select(PANTRY_SELECT)
+    .select(PANTRY_ROW_SELECT)
     .single()
 
   return { data: (data as PantryItem) ?? null, error }

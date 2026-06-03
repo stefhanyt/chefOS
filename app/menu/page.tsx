@@ -14,6 +14,7 @@ import {
   type MenuDishEntry,
   type WeekMenu,
 } from "@/lib/supabase/menu-data"
+import { fetchDishLibrary, fetchMenuItems } from "@/lib/supabase/list-fetch"
 import {
   MENU_CATEGORIES,
   MENU_DAYS,
@@ -76,10 +77,10 @@ export default function MenuPage() {
     setMenuId(weeklyMenu.id)
     setIsConfirmed(weeklyMenu.status === "confirmed")
 
-    const { data: items, error: itemsError } = await supabase
-      .from("menu_items")
-      .select("*")
-      .eq("menu_id", weeklyMenu.id)
+    const { data: items, error: itemsError } = await fetchMenuItems(
+      supabase,
+      weeklyMenu.id,
+    )
 
     if (itemsError) {
       logSupabaseError("menu items load", itemsError)
@@ -87,7 +88,7 @@ export default function MenuPage() {
       return
     }
 
-    setMenu(buildWeekMenuFromItems((items as MenuItemRow[]) ?? []))
+    setMenu(buildWeekMenuFromItems(items))
   }, [homeId, weekStart, showError])
 
   useEffect(() => {
@@ -101,18 +102,19 @@ export default function MenuPage() {
         return
       }
       try {
-        const [homesRes, dishesRes] = await Promise.all([
-          supabase.from("homes").select("*").is("archived_at", null).order("name"),
-          supabase
-            .from("dish_library")
-            .select("*")
-            .is("archived_at", null)
-            .order("name"),
-        ])
+        const homesRes = await supabase
+          .from("homes")
+          .select("*")
+          .is("archived_at", null)
+          .order("name")
         if (homesRes.error) throw homesRes.error
         const list = (homesRes.data as Home[]) ?? []
         setHomes(list)
-        setDishLibrary((dishesRes.data as DishLibraryItem[]) ?? [])
+        const { data: dishes, error: dishesError } = await fetchDishLibrary(
+          supabase,
+        )
+        if (dishesError) throw dishesError
+        setDishLibrary(dishes)
         if (list[0] && !homeId) setHomeId(list[0].id)
       } catch (err) {
         logSupabaseError("menu init", err)
@@ -266,6 +268,7 @@ export default function MenuPage() {
         },
       }
     })
+    await loadMenu()
   }
 
   async function removeDish(entryId: string, day: number, cat: string) {
@@ -547,7 +550,7 @@ export default function MenuPage() {
 
   return (
     <AppShell>
-      <div className={`-mx-5 -mt-6 mb-7 rounded-b-3xl px-5 pb-6 pt-6 ${ui.hero}`}>
+      <div className={`chef-hero-bleed mb-7 rounded-b-3xl pb-6 ${ui.hero}`}>
         <p className="mb-1 text-xs font-bold uppercase tracking-widest opacity-60">
           Weekly Menu
         </p>

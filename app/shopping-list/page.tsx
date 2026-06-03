@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import AppShell from "@/components/AppShell"
 import PageHeader from "@/components/PageHeader"
 import ShoppingItemCard from "@/components/ShoppingItemCard"
@@ -11,6 +11,12 @@ import { createClient } from "@/lib/supabase/client"
 import { getAuthUserId } from "@/lib/supabase/auth-helpers"
 import { getSupabaseErrorMessage, logSupabaseError } from "@/lib/supabase/errors"
 import { computePantryStatus } from "@/lib/pantry-utils"
+import {
+  attachHomes,
+  fetchShoppingItemById,
+  fetchShoppingItems,
+  mergeById,
+} from "@/lib/supabase/list-fetch"
 import { useToast } from "@/components/ToastProvider"
 import { CONFIG_ERROR } from "@/lib/constants"
 import type { Home, ShoppingItem, Priority } from "@/lib/types"
@@ -31,10 +37,12 @@ export default function ShoppingListPage() {
   const [purchaseItem, setPurchaseItem] = useState<ShoppingItem | null>(null)
   const [newQty, setNewQty] = useState("")
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      setError(null)
+  const loadItems = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) {
+        setLoading(true)
+        setError(null)
+      }
       const supabase = createClient()
       if (!supabase) {
         setError(CONFIG_ERROR)
@@ -42,41 +50,39 @@ export default function ShoppingListPage() {
         return
       }
       try {
-        const [itemsRes, homesRes] = await Promise.all([
-          supabase
-            .from("shopping_items")
-            .select(
-              "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)"
-            )
-            .is("archived_at", null)
-            .in("status", ["Open", "Purchased"])
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("homes")
-            .select("id, name")
-            .is("archived_at", null)
-            .order("name"),
-        ])
-        if (itemsRes.error) throw itemsRes.error
-        setItems((itemsRes.data as ShoppingItem[]) ?? [])
-        setHomes((homesRes.data as Home[]) ?? [])
+        const homesRes = await supabase
+          .from("homes")
+          .select("id, name, location, owner_id")
+          .is("archived_at", null)
+          .order("name")
+        if (homesRes.error) throw homesRes.error
+        const homeList = (homesRes.data as Home[]) ?? []
+        setHomes(homeList)
+
+        const { data, error: itemsError } = await fetchShoppingItems(
+          supabase,
+          homeList,
+        )
+        if (itemsError) throw itemsError
+        setItems(data)
       } catch (err) {
         logSupabaseError("shopping load", err)
         setError("Failed to load shopping list. Check your connection and try again.")
         showError(getSupabaseErrorMessage(err))
       } finally {
-        setLoading(false)
+        if (!opts?.silent) setLoading(false)
       }
-    }
-    load()
-  }, [retryCount])
+    },
+    [showError],
+  )
+
+  useEffect(() => {
+    loadItems()
+  }, [retryCount, loadItems])
 
   useEffect(() => {
     const supabase = createClient()
     if (!supabase) return
-
-    const ITEM_SELECT =
-      "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)"
 
     const channel = supabase
       .channel("shopping-items-live")
@@ -84,36 +90,25 @@ export default function ShoppingListPage() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "shopping_items" },
         async (payload) => {
-          const id = (payload.new as any).id as string
-          const { data } = await supabase
-            .from("shopping_items")
-            .select(ITEM_SELECT)
-            .eq("id", id)
-            .is("archived_at", null)
-            .single()
-          if (!data) return
-          setItems((prev) =>
-            prev.find((i) => i.id === id) ? prev : [data as ShoppingItem, ...prev]
-          )
+          const id = (payload.new as { id: string }).id
+          const row = await fetchShoppingItemById(supabase, id, homes)
+          if (!row) return
+          setItems((prev) => mergeById(prev, row))
         }
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "shopping_items" },
         async (payload) => {
-          const updated = payload.new as any
+          const updated = payload.new as ShoppingItem
           if (updated.archived_at || !["Open", "Purchased"].includes(updated.status)) {
             setItems((prev) => prev.filter((i) => i.id !== updated.id))
             return
           }
-          const { data } = await supabase
-            .from("shopping_items")
-            .select(ITEM_SELECT)
-            .eq("id", updated.id)
-            .single()
-          if (data) {
+          const row = await fetchShoppingItemById(supabase, updated.id, homes)
+          if (row) {
             setItems((prev) =>
-              prev.map((i) => (i.id === updated.id ? (data as ShoppingItem) : i))
+              prev.map((i) => (i.id === updated.id ? row : i))
             )
           }
         }
@@ -130,7 +125,7 @@ export default function ShoppingListPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [homes])
 
   const open = items.filter((i) => i.status === "Open")
   const purchased = items.filter((i) => i.status === "Purchased")
@@ -215,19 +210,34 @@ export default function ShoppingListPage() {
       showError("You must be signed in to add shopping items.")
       return
     }
-    const { data, error } = await supabase
+    const { data: inserted, error } = await supabase
       .from("shopping_items")
       .insert({ ...form, status: "Open", added_by: userId })
-      .select(
-        "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)"
-      )
+      .select("*")
       .single()
     if (error) {
       logSupabaseError("shopping insert", error)
       showError(getSupabaseErrorMessage(error))
       return
     }
-    if (data) setItems((prev) => [data as ShoppingItem, ...prev])
+    let row = inserted as ShoppingItem | null
+    if (!row) {
+      const { data: fallback } = await supabase
+        .from("shopping_items")
+        .select("*")
+        .eq("home_id", form.home_id)
+        .eq("name", form.name.trim())
+        .is("archived_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      row = (fallback as ShoppingItem) ?? null
+    }
+    if (row) {
+      const attached = attachHomes([row], homes)[0]
+      setItems((prev) => mergeById(prev, attached))
+    }
+    await loadItems({ silent: true })
     setShowAdd(false)
     showSuccess("Added to shopping list")
   }
@@ -252,22 +262,19 @@ export default function ShoppingListPage() {
   async function handleReopen(item: ShoppingItem) {
     const supabase = createClient()
     if (!supabase) return
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("shopping_items")
       .update({ status: "Open", completed_at: null })
       .eq("id", item.id)
-      .select(
-        "*, home:homes(id, name, location), added_by_profile:profiles!added_by(id, display_name, email)",
-      )
-      .single()
     if (error) {
       logSupabaseError("shopping reopen", error)
       showError(getSupabaseErrorMessage(error))
       return
     }
-    if (data) {
+    const row = await fetchShoppingItemById(supabase, item.id, homes)
+    if (row) {
       setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? (data as ShoppingItem) : i)),
+        prev.map((i) => (i.id === item.id ? row : i)),
       )
     }
     showSuccess("Item moved back to open")
